@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "id": "samara-hub-ro.quick-apps",
+  "name": "Quick Apps",
+  "version": "1.0.0",
+  "author": "samara-hub-ro",
+  "license": "MIT",
+  "description": "A discreet launcher in the Omarchy bar: your most-used applications, grouped into your own categories, opening on hover.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Quick Apps",
+    "description": "Your most-used applications by category, one hover away from the bar. Edit the grid in place; open it from a keybinding too.",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "center",
+    "defaults": {
+      "openOnHover": true,
+      "hoverOpenDelay": 140,
+      "hoverCloseDelay": 280,
+      "backgroundOpacity": 82,
+      "iconSize": 34,
+      "columns": 5,
+      "showLabels": true,
+      "maxHeight": 480
+    },
+    "schema": [
+      {
+        "key": "openOnHover",
+        "type": "boolean",
+        "label": "Open on hover",
+        "description": "Show the panel when the pointer rests on the bar icon. With this off, the icon opens on click and the keybinding still works.",
+        "defaultValue": true
+      },
+      {
+        "key": "hoverOpenDelay",
+        "type": "integer",
+        "label": "Hover delay (ms)",
+        "description": "How long the pointer has to sit on the icon before the panel opens. Raise it if the panel appears while you are passing by.",
+        "min": 0,
+        "max": 2000,
+        "step": 20,
+        "defaultValue": 140
+      },
+      {
+        "key": "hoverCloseDelay",
+        "type": "integer",
+        "label": "Close delay (ms)",
+        "description": "Grace period after the pointer leaves the icon and the panel, so crossing the gap between them does not close it.",
+        "min": 0,
+        "max": 3000,
+        "step": 20,
+        "defaultValue": 280
+      },
+      {
+        "key": "backgroundOpacity",
+        "type": "integer",
+        "label": "Background opacity (%)",
+        "description": "Opacity of the panel background. Lower is more see-through; pair it with a Hyprland blur layerrule for a frosted panel.",
+        "min": 10,
+        "max": 100,
+        "step": 2,
+        "defaultValue": 82
+      },
+      {
+        "key": "iconSize",
+        "type": "integer",
+        "label": "Icon size (px)",
+        "description": "Size of each application icon in the grid.",
+        "min": 20,
+        "max": 72,
+        "step": 2,
+        "defaultValue": 34
+      },
+      {
+        "key": "columns",
+        "type": "integer",
+        "label": "Columns",
+        "description": "How many applications sit side by side before the grid wraps. This is what sets the panel's width.",
+        "min": 2,
+        "max": 10,
+        "step": 1,
+        "defaultValue": 5
+      },
+      {
+        "key": "maxHeight",
+        "type": "integer",
+        "label": "Maximum height (px)",
+        "description": "How tall the panel is allowed to grow before the grid starts scrolling inside it.",
+        "min": 200,
+        "max": 1400,
+        "step": 20,
+        "defaultValue": 480
+      },
+      {
+        "key": "showLabels",
+        "type": "boolean",
+        "label": "Show application names",
+        "description": "Print each application's name under its icon. Turn it off for a tighter, icon-only grid.",
+        "defaultValue": true
+      },
+      {
+        "key": "seedOnFirstRun",
+        "type": "boolean",
+        "label": "Fill categories on first use",
+        "description": "The first time the panel opens with nothing in it, build a starting set of categories from the applications you have installed.",
+        "defaultValue": true
+      },
+      {
+        "key": "icon",
+        "type": "string",
+        "label": "Bar icon",
+        "description": "Glyph shown in the bar. Any character your bar font carries.",
+        "defaultValue": "󰀻"
+      },
+      {
+        "key": "configPath",
+        "type": "path",
+        "label": "Categories file",
+        "description": "Where the categories and their applications are stored. Defaults to ~/.config/omarchy/quick-apps.json.",
+        "defaultValue": ""
+      }
+    ]
+  }
+}
