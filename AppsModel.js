@@ -39,6 +39,37 @@ function normalizeAppId(value) {
   return id
 }
 
+// ------------------------------------------------------------------ colours
+//
+// Every category carries a colour, used for its tinted background, its heading
+// and the arc that stands for its applications in the usage chart. A category
+// that has not been given one falls back to this palette by position, so the
+// panel is colour-coded out of the box and nothing has to be configured for it
+// to look deliberate. Chosen to stay legible at low alpha on dark themes.
+
+var PALETTE = [
+  "#22d3ee", "#a78bfa", "#34d399", "#fbbf24",
+  "#fb7185", "#60a5fa", "#a3e635", "#fb923c",
+  "#f472b6", "#2dd4bf", "#818cf8", "#f87171"
+]
+
+function isHexColor(value) {
+  return /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(String(value || ""))
+}
+
+function paletteColor(index) {
+  var at = Math.round(Number(index) || 0) % PALETTE.length
+  if (at < 0) at += PALETTE.length
+  return PALETTE[at]
+}
+
+// `index` is the category's position, which is what makes neighbouring
+// categories differ without anyone having to pick anything.
+function colorOf(category, index) {
+  var stored = category ? String(category.color || "") : ""
+  return isHexColor(stored) ? stored : paletteColor(index)
+}
+
 // Anything the user (or a hand-edited file) throws at us becomes a config with
 // the shape the panel expects: named categories, unique ids, no duplicate or
 // empty app ids.
@@ -67,7 +98,8 @@ function normalize(raw) {
     if (takenIds.indexOf(id) !== -1) id = uniqueId(id, takenIds)
     takenIds.push(id)
 
-    out.categories.push({ id: id, name: name, apps: apps })
+    var color = isHexColor(category.color) ? String(category.color) : ""
+    out.categories.push({ id: id, name: name, color: color, apps: apps })
   }
 
   return out
@@ -108,7 +140,7 @@ function addCategory(config, name) {
   var next = clone(config)
   var taken = next.categories.map(function(c) { return c.id })
   var label = String(name || "").trim() || "New category"
-  next.categories.push({ id: uniqueId(label, taken), name: label, apps: [] })
+  next.categories.push({ id: uniqueId(label, taken), name: label, color: "", apps: [] })
   return next
 }
 
@@ -136,6 +168,33 @@ function moveCategory(config, categoryId, direction) {
   if (index === -1 || target < 0 || target >= next.categories.length) return next
   var moved = next.categories.splice(index, 1)[0]
   next.categories.splice(target, 0, moved)
+  return next
+}
+
+// Drop the stored colour (anything that is not a hex string, "" included) and
+// the category goes back to following the palette by position.
+function setCategoryColor(config, categoryId, color) {
+  var next = clone(config)
+  var index = categoryIndex(next, categoryId)
+  if (index === -1) return next
+  next.categories[index].color = isHexColor(color) ? String(color) : ""
+  return next
+}
+
+// Drag-and-drop reordering. `targetIndex` is an insertion point in the list as
+// it stands *before* the move — "put it in front of the category currently at
+// this position", with `categories.length` meaning "at the end" — because that
+// is what a drop indicator between two rows actually means.
+function moveCategoryTo(config, categoryId, targetIndex) {
+  var next = clone(config)
+  var index = categoryIndex(next, categoryId)
+  if (index === -1) return next
+  var to = Math.max(0, Math.min(next.categories.length, Math.round(Number(targetIndex) || 0)))
+  // Removing the dragged category first shifts everything after it up by one.
+  if (to > index) to -= 1
+  if (to === index) return next
+  var moved = next.categories.splice(index, 1)[0]
+  next.categories.splice(to, 0, moved)
   return next
 }
 
@@ -198,7 +257,14 @@ function buildSections(config, query, describe) {
     }
     // `offset` is where this section starts in the flattened list, so a tile
     // can tell whether the keyboard cursor is on it without a second walk.
-    sections.push({ id: category.id, name: category.name, apps: apps, total: category.apps.length, offset: offset })
+    sections.push({
+      id: category.id,
+      name: category.name,
+      color: colorOf(category, i),
+      apps: apps,
+      total: category.apps.length,
+      offset: offset
+    })
     offset += apps.length
   }
 
@@ -213,6 +279,31 @@ function flatten(sections) {
     }
   }
   return flat
+}
+
+// Every application in the launcher, in panel order, de-duplicated: the input
+// the usage table is reconciled against and the ranking is drawn from.
+function allAppIds(config) {
+  var ids = []
+  var categories = (config && config.categories) || []
+  for (var i = 0; i < categories.length; i++) {
+    var apps = categories[i].apps || []
+    for (var j = 0; j < apps.length; j++) {
+      if (ids.indexOf(apps[j]) === -1) ids.push(apps[j])
+    }
+  }
+  return ids
+}
+
+// The colour an application inherits, which is the one of the first category
+// holding it. An application in two categories takes the higher one's colour.
+function colorForApp(config, appId) {
+  var categories = (config && config.categories) || []
+  var id = normalizeAppId(appId)
+  for (var i = 0; i < categories.length; i++) {
+    if ((categories[i].apps || []).indexOf(id) !== -1) return colorOf(categories[i], i)
+  }
+  return paletteColor(0)
 }
 
 // --------------------------------------------------------------------- seed
@@ -262,13 +353,13 @@ function seed(entries, perCategory) {
     if (buckets[k].apps.length === 0) continue
     var id = uniqueId(buckets[k].name, taken)
     taken.push(id)
-    config.categories.push({ id: id, name: buckets[k].name, apps: buckets[k].apps })
+    config.categories.push({ id: id, name: buckets[k].name, color: "", apps: buckets[k].apps })
   }
 
   // A machine with no categorised entries at all still gets a home to put
   // things in, rather than an empty panel with no way forward.
   if (config.categories.length === 0)
-    config.categories.push({ id: "favourites", name: "Favourites", apps: [] })
+    config.categories.push({ id: "favourites", name: "Favourites", color: "", apps: [] })
 
   return config
 }

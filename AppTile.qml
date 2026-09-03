@@ -2,10 +2,11 @@ import QtQuick
 import qs.Commons
 import qs.Ui
 
-// One application in the grid: icon, optional label, and — only while the
-// panel is in edit mode and the pointer is on the tile — the remove and
-// reorder affordances. Nothing but the icon shows at rest, which is the
-// whole point of the widget.
+// One application in the grid: icon, optional label, a discreet count of how
+// often it has been launched from here, and — only while the panel is in edit
+// mode and the pointer is on the tile — the remove and reorder affordances.
+// Nothing but the icon, its name and that small number shows at rest, which is
+// the whole point of the widget.
 Item {
   id: root
 
@@ -19,6 +20,14 @@ Item {
   property bool missing: false
   property bool canMoveLeft: false
   property bool canMoveRight: false
+  // Times this application has been opened from the launcher since it was put
+  // in its category; 0 hides the badge entirely.
+  property int launchCount: 0
+  property bool showCount: true
+  property string countIcon: ""
+  // Colour of the category this tile sits in — the highlight and the badge
+  // both take it, so a tile reads as belonging to its group.
+  property color accent: Color.accent
   property color foreground: Color.foreground
   property string fontFamily: Style.font.family
 
@@ -37,7 +46,7 @@ Item {
   Rectangle {
     anchors.fill: parent
     radius: Style.cornerRadius > 0 ? Style.cornerRadius : Style.space(6)
-    color: root.highlighted ? Qt.rgba(root.foreground.r, root.foreground.g, root.foreground.b, root.selected ? 0.16 : 0.09) : "transparent"
+    color: root.highlighted ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, root.selected ? 0.26 : 0.15) : "transparent"
 
     Behavior on color { ColorAnimation { duration: 110 } }
   }
@@ -77,6 +86,22 @@ Item {
     anchors.rightMargin: Style.space(3)
     anchors.top: icon.bottom
     anchors.topMargin: Style.space(4)
+  }
+
+  // Top right at rest; edit mode wants that corner for the remove button, and
+  // a count is not what you are looking at while rearranging anyway.
+  CountBadge {
+    visible: root.showCount && !root.editing && root.launchCount > 0
+    count: root.launchCount
+    countIcon: root.countIcon
+    accent: root.accent
+    foreground: root.foreground
+    fontFamily: root.fontFamily
+    strong: root.highlighted
+    anchors.right: parent.right
+    anchors.top: parent.top
+    anchors.rightMargin: Style.space(3)
+    anchors.topMargin: Style.space(3)
   }
 
   MouseArea {

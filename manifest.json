@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "samara-hub-ro.quick-apps",
   "name": "Quick Apps",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "samara-hub-ro",
   "license": "MIT",
-  "description": "A discreet launcher in the Omarchy bar: your most-used applications, grouped into your own categories, opening on hover.",
+  "description": "A discreet launcher in the Omarchy bar: your most-used applications, grouped into your own colour-coded categories, opening on hover — with a launch counter on every tile and a ranking of what you actually reach for.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "Quick Apps",
-    "description": "Your most-used applications by category, one hover away from the bar. Edit the grid in place; open it from a keybinding too.",
+    "description": "Your most-used applications by category, one hover away from the bar. Colour-coded groups you can drag into order, a launch count on every tile, and a ranking of your busiest applications on top.",
     "category": "System",
     "allowMultiple": false,
     "defaultSection": "center",
@@ -26,7 +26,12 @@
       "iconSize": 34,
       "columns": 5,
       "showLabels": true,
-      "maxHeight": 480
+      "maxHeight": 480,
+      "showMostUsed": true,
+      "mostUsedCount": 5,
+      "showUsageChart": true,
+      "showLaunchCounts": true,
+      "categoryTint": 30
     },
     "schema": [
       {
@@ -102,6 +107,54 @@
         "label": "Show application names",
         "description": "Print each application's name under its icon. Turn it off for a tighter, icon-only grid.",
         "defaultValue": true
+      },
+      {
+        "key": "showMostUsed",
+        "type": "boolean",
+        "label": "Show most used",
+        "description": "Put a ranking of your busiest applications at the top of the panel, above the categories. It is hidden while you are editing or filtering.",
+        "defaultValue": true
+      },
+      {
+        "key": "mostUsedCount",
+        "type": "integer",
+        "label": "Most used entries",
+        "description": "How many applications the ranking lists — and how many orbits the chart beside it draws.",
+        "min": 1,
+        "max": 6,
+        "step": 1,
+        "defaultValue": 5
+      },
+      {
+        "key": "showUsageChart",
+        "type": "boolean",
+        "label": "Show the usage chart",
+        "description": "Draw the orbit chart beside the ranking: one arc per application, longest for the one you open most.",
+        "defaultValue": true
+      },
+      {
+        "key": "showLaunchCounts",
+        "type": "boolean",
+        "label": "Show launch counts",
+        "description": "Print a small badge on each tile with the number of times that application has been opened from the launcher since you added it to a category.",
+        "defaultValue": true
+      },
+      {
+        "key": "countIcon",
+        "type": "string",
+        "label": "Counter glyph",
+        "description": "Glyph shown next to a launch count. Any character your bar font carries.",
+        "defaultValue": ""
+      },
+      {
+        "key": "categoryTint",
+        "type": "integer",
+        "label": "Category tint (%)",
+        "description": "How strongly each category's colour washes its background. The default of 30 is 70% transparent — enough to group the tiles under it, far too faint to fight the icons. 0 turns the tint off.",
+        "min": 0,
+        "max": 70,
+        "step": 2,
+        "defaultValue": 30
       },
       {
         "key": "seedOnFirstRun",
