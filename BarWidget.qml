@@ -60,6 +60,7 @@ Panel {
   readonly property bool showUsageChart: setting("showUsageChart", true) === true
   readonly property bool showLaunchCounts: setting("showLaunchCounts", true) === true
   readonly property bool sortByUsage: setting("sortByUsage", true) === true
+  readonly property bool countExternalLaunches: setting("countExternalLaunches", true) === true
   readonly property string countIcon: String(setting("countIcon", ""))
   // Alpha of each category's background wash, in percent. 30 is the default —
   // 70% transparent, present enough to group the tiles under it and far too
@@ -204,6 +205,10 @@ Panel {
   function launchApp(app) {
     if (!app || !app.id) return
     root.recordLaunch(app.id)
+    // The window this is about to open would otherwise be counted again when
+    // it maps. The panel's own count is the certain one; the watcher's is the
+    // inference, so the inference stands down.
+    windowWatcher.suppress(app.id)
     root.close()
 
     if (root.appLibrary && typeof root.appLibrary.launch === "function") {
@@ -371,6 +376,16 @@ Panel {
 
   onConfigChanged: root.syncUsage()
   onConfigAuthoritativeChanged: root.syncUsage()
+
+  // Applications opened from anywhere else — a keybinding, the Omarchy menu, a
+  // terminal — reach the counter through here.
+  WindowWatcher {
+    id: windowWatcher
+    enabled: root.countExternalLaunches
+    appIds: root.currentAppIds()
+
+    onLaunched: function(appId) { root.recordLaunch(appId) }
+  }
 
   FileView {
     id: usageFile

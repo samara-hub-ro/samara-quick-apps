@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "samara-hub-ro.quick-apps",
   "name": "Quick Apps",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "author": "samara-hub-ro",
   "license": "MIT",
-  "description": "A discreet launcher in the Omarchy bar: your most-used applications, grouped into your own colour-coded categories, opening on hover — with a launch counter on every tile and a ranking of what you actually reach for.",
+  "description": "A discreet launcher in the Omarchy bar: your most-used applications, grouped into your own colour-coded categories, opening on hover — counting every time you open them, from the panel or from anywhere else.",
   "kinds": [
     "bar-widget"
   ],
@@ -33,7 +33,8 @@
       "showLaunchCounts": true,
       "categoryTint": 30,
       "icon": "",
-      "sortByUsage": true
+      "sortByUsage": true,
+      "countExternalLaunches": true
     },
     "schema": [
       {
@@ -139,6 +140,13 @@
         "type": "boolean",
         "label": "Show launch counts",
         "description": "Print a small badge on each tile with the number of times that application has been opened from the launcher since you added it to a category.",
+        "defaultValue": true
+      },
+      {
+        "key": "countExternalLaunches",
+        "type": "boolean",
+        "label": "Count launches from elsewhere",
+        "description": "Also count an application when it is opened from a keybinding, the Omarchy menu, a terminal or anything else, by watching for its window. Turn this off to count only what you launch from this panel.",
         "defaultValue": true
       },
       {

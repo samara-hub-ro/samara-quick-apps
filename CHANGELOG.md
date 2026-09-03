@@ -9,6 +9,53 @@ for each release.
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-09-03
+
+### Added
+
+- **Launches from outside the panel now count.** Opening an application from a
+  keybinding, the Omarchy menu, a terminal or any other launcher moves its
+  counter, so the ranking reflects what you actually use rather than only what
+  you happened to start from here. `countExternalLaunches` turns it off.
+
+  Nothing announces "an application was started" — the shell's own
+  `AppLibrary.launch` emits no signal and nothing else on the bus does either.
+  What a Wayland compositor *does* announce is a new window, so that is what
+  this watches, mapping the window's class back to a desktop entry the launcher
+  holds.
+
+### Changed
+
+- **What the counter means.** It was "opens from this panel"; it is now "times
+  a window opened for this application, from anywhere", still counting from the
+  day the application joined its category. Both the README and this file
+  spelled the old meaning out deliberately, so the new one is worth being
+  equally plain about — including where it is not exact:
+  - It counts **windows**. An application that reuses a window it already has —
+    a browser opening a link in a tab, a single-instance editor opening a file
+    — has not opened a window and does not count. Opening a *second* window of
+    something already running does.
+  - It needs to **recognise the window**. A window whose class matches no entry
+    in your launcher counts for nobody, and one that matches *two* also counts
+    for nobody: crediting the wrong application is worse than not counting,
+    because there is no way to notice it and no way to correct it.
+  - Two windows of the same application within 1.5s count **once**, which is
+    almost always a splash screen rather than you opening two.
+  - Windows already open when the shell starts are **not** launches, however
+    long the compositor takes to enumerate them.
+  - A launch made from the panel is counted by the panel, immediately and
+    exactly once; the window it then opens is not counted again.
+
+### Notes on behaviour
+
+- The matching rules live in `WindowMatch.js`, deliberately free of QML so they
+  can be run against a real machine's desktop entries and window classes. Four
+  tiers, strongest first: the entry's declared `StartupWMClass`, its id, the
+  last segment of a reverse-DNS id (`org.kde.kate` maps a window classed
+  `kate`), then a comparison with case and punctuation discarded (`LM-Studio`
+  for "LM Studio"). Entries whose `StartupWMClass` is still the packaging
+  template `@@startup_wm_class` are treated as declaring nothing.
+
 ## [1.2.0] — 2026-09-03
 
 Everything 1.1.0 added was invisible until you had used it: the ranking hid
@@ -152,7 +199,8 @@ First public release.
   exposes it, for the same icon resolution and launch feedback as the Omarchy
   menu, and falls back to the desktop entry itself otherwise.
 
-[Unreleased]: https://github.com/samara-hub-ro/samara-quick-apps/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/samara-hub-ro/samara-quick-apps/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.3.0
 [1.2.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.2.0
 [1.1.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.1.0
 [1.0.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.0.0

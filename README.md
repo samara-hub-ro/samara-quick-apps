@@ -18,7 +18,9 @@ On top sits **what you actually use**: the applications you open most, ranked,
 each with the number of times you have opened it, next to a chart of the same
 numbers. Every tile in the grid below carries that count too, as a small badge
 in its category's colour — and each category sorts itself so the things you
-reach for rise to the front of their group.
+reach for rise to the front of their group. The counting is not limited to this
+panel: opening something from a keybinding, the Omarchy menu or a terminal moves
+its counter just the same.
 
 The same panel opens from a keybinding, and that open is keyboard-driven: arrow
 keys move between tiles, typing filters them, Enter launches, Escape closes.
@@ -116,24 +118,41 @@ typing in.
 
 ## Counting what you open
 
-Every application in the launcher carries a count of how many times it has been
-opened **from the launcher**, shown as a small badge on its tile and spelled out
-in the ranking on top.
+Every application in the launcher carries a count of how many times you have
+opened it, shown as a small badge on its tile and spelled out in the ranking on
+top. Opening it from the panel counts; so does opening it from a keybinding, the
+Omarchy menu, a terminal or any other launcher.
 
-The counter is deliberately narrow, and worth being precise about:
+The counter is worth being precise about, because it is exact in some places and
+an inference in others:
 
-- It counts **launches from this panel** — a tile clicked, a row in the ranking
-  clicked, or `Enter` on the keyboard cursor. Opening the same application from
-  a terminal, a menu or a keybinding is not counted; the launcher has no way to
-  see those and would be guessing if it claimed otherwise.
 - It counts **from the moment the application was added to a category**, not
   from when you installed it and not from when you installed this plugin. `18`
   means "eighteen times since you put this here".
 - Taking an application out of a category **forgets its count**. Put it back and
   it starts from zero, because by the rule above that is what its count now
   means.
-- **Upgrading from 1.0.0 starts everything at zero**, dated to the first run of
-  1.1.0 — there was nothing to carry over.
+- A launch **from the panel** — a tile clicked, a ranking row clicked, `Enter`
+  on the keyboard cursor — is counted directly and exactly once. This is the
+  part that is certain.
+- A launch **from anywhere else** is inferred from a window appearing, because
+  nothing on the system announces that an application was started. That
+  inference is good but not perfect:
+  - It counts **windows**. An application that reuses a window it already has —
+    a browser opening a link in a tab, a single-instance editor opening a file
+    — has not opened a window and will not move. Opening a *second* window of
+    something already running does count.
+  - It has to **recognise the window**. A window whose class matches no entry in
+    your launcher counts for nobody, and one that matches *two* also counts for
+    nobody: crediting the wrong application is worse than not counting, since
+    you would have no way to notice and no way to correct it.
+  - Two windows of the same application inside 1.5 seconds count **once**, which
+    is nearly always a splash screen rather than you opening two.
+  - Windows already open when the shell starts are **not** launches.
+- Set `countExternalLaunches` to `false` to go back to counting only what you
+  launch from the panel.
+- **Counters start at zero** on a fresh install and on an upgrade — there has
+  never been anything to carry over.
 
 Counts live in `~/.config/omarchy/quick-apps-usage.json`, beside the categories
 rather than inside them: they change on every launch, and rewriting the file you
@@ -266,6 +285,7 @@ plugin settings UI, which builds a form from the manifest schema.
 | `mostUsedCount` | integer | `5` | How many the ranking lists, and how many orbits the chart draws (1–6) |
 | `showUsageChart` | boolean | `true` | Draw the chart beside the ranking |
 | `showLaunchCounts` | boolean | `true` | Print the launch-count badge on each tile |
+| `countExternalLaunches` | boolean | `true` | Also count applications opened from a keybinding, the Omarchy menu or a terminal |
 | `sortByUsage` | boolean | `true` | Order the tiles in each category most-launched first |
 | `countIcon` | string | `` | Glyph shown next to a launch count |
 | `categoryTint` | integer (%) | `30` | How strongly a category's colour washes its background; `30` is 70% transparent, `0` is off |
@@ -353,12 +373,30 @@ pointer wherever the pointer is. When the panel is opened from the keybinding
 gives outside clicks something to land on for dismissal. Hover-opened, it stays
 narrow and takes no keyboard focus at all.
 
-**Counting without lying about it.** The counter could have been a system-wide
-"times opened", but nothing in a bar widget can see a launch it did not make, so
-that number would have been wrong in a way the user could not check. Scoping it
-to "opens from this launcher, since you added this here" gives up reach for a
-claim the panel can actually stand behind — and it is the number the ranking
-needs anyway, since the point of the ranking is what to put *in* the launcher.
+**Counting launches nobody announces.** There is no signal anywhere for "an
+application was started" — the shell's own `AppLibrary.launch` emits none, and
+neither does anything else on the bus. What a Wayland compositor *does* announce
+is a new window, so that is what the plugin watches, mapping the window's class
+back to one of the entries in your launcher.
+
+That mapping is the whole difficulty, and the rule that shapes it is: **when a
+window looks like two different applications, credit neither.** A count quietly
+attributed to the wrong application is worse than a count not taken, because you
+have no way to notice the first and no way to correct it afterwards. The rules
+live in `WindowMatch.js`, deliberately free of QML so they can be run against a
+real machine's desktop entries and window classes. Four tiers, strongest first:
+the entry's declared `StartupWMClass`; its id; the last segment of a reverse-DNS
+id (`org.kde.kate` maps a window classed `kate`); and finally a comparison with
+case and punctuation discarded (`LM-Studio` for "LM Studio"). Entries whose
+`StartupWMClass` is still the packaging template `@@startup_wm_class` are read
+as declaring nothing.
+
+**Waiting out the compositor.** Every window that was already open reaches the
+watcher as a new one when the shell connects, and that enumeration can land well
+after the widget is built — so "ignore the first couple of seconds" does not
+cover it. Instead the burst pushes the arming ahead of itself: each window seen
+while unarmed restarts the timer, so counting begins only once the window list
+has gone quiet, whenever that turns out to be.
 
 **Sorting as a view, never as a write.** It would have been simpler to reorder
 `quick-apps.json` every time a count changed, and much worse: the file would
@@ -399,10 +437,20 @@ deliberately leaves the keyboard alone.
 
 **Every count is zero and the ranking says nothing has been opened.** That is
 the honest starting state — counts begin at zero on a fresh install, on an
-upgrade, and for any application the moment you add it to a category. Only
-launches made from this panel are counted, so opening things from a terminal or
-a menu will not move them. Launch a few things from the panel and the ranking,
-the chart and the sort all fill in.
+upgrade, and for any application the moment you add it to a category. Open a few
+things and the ranking, the chart and the sort all fill in.
+
+**One application never counts, however often I open it.** Its window class does
+not match its desktop entry closely enough for the plugin to be sure, or it
+matches two of your entries, in which case it deliberately counts for neither.
+Compare `hyprctl clients -j` (the `class` field) against the entry's
+`StartupWMClass`; adding an accurate `StartupWMClass` to the `.desktop` file
+fixes it for every tool on the system, not just this one. Launching it from the
+panel always counts regardless.
+
+**A count goes up when I only opened a new window.** It counts windows, which is
+the only thing the compositor tells anyone about. The reverse is true too: an
+application that reuses a window it already has will not move its counter.
 
 **A count went back to zero on its own.** The application left its category at
 some point — removed by hand, or by an edit to `quick-apps.json` — and the count
