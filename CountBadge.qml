@@ -15,13 +15,17 @@ Item {
   property string fontFamily: Style.font.family
   // Set while the thing the badge belongs to is hovered or selected.
   property bool strong: false
+  // Whether a count of zero still draws. Tiles pass true: a launcher where the
+  // badges only appear once you have used it is a launcher whose counter
+  // nobody can find on the day they install it.
+  property bool showZero: false
 
-  visible: root.count > 0
+  visible: root.count > 0 || root.showZero
   implicitWidth: plate.implicitWidth
   implicitHeight: plate.implicitHeight
   width: implicitWidth
   height: implicitHeight
-  opacity: root.strong ? 1.0 : 0.62
+  opacity: root.strong ? 1.0 : (root.count > 0 ? 0.62 : 0.34)
 
   Behavior on opacity { NumberAnimation { duration: 110 } }
 

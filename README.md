@@ -17,7 +17,8 @@ move the pointer away and the panel is gone.
 On top sits **what you actually use**: the applications you open most, ranked,
 each with the number of times you have opened it, next to a chart of the same
 numbers. Every tile in the grid below carries that count too, as a small badge
-in its category's colour.
+in its category's colour — and each category sorts itself so the things you
+reach for rise to the front of their group.
 
 The same panel opens from a keybinding, and that open is keyboard-driven: arrow
 keys move between tiles, typing filters them, Enter launches, Escape closes.
@@ -87,7 +88,10 @@ snap it shut. A panel you are editing never closes on its own.
 - **Click a tile** to launch it. The panel closes as it launches.
 - **Most used** sits above the categories: your busiest applications, ranked,
   with their counts and a chart of the same numbers. The rows launch on click
-  like any tile. It is hidden while you are editing or filtering.
+  like any tile. On a launcher nothing has been opened from yet it says so and
+  shows the chart idle. It is hidden while you are editing or filtering.
+- **Tiles sort themselves** inside each category, most-launched first. Turn it
+  off with `sortByUsage` to go back to the order you arranged.
 - **Edit** turns the grid into an editor: drag a category by the handle on its
   left to move it, click its swatch to recolour it, rename it in place, `＋` add
   an application to it, `↑ ↓` nudge it one step, `✕` delete it, and on each tile
@@ -153,6 +157,21 @@ omarchy-shell samara-hub-ro.quick-apps resetCounts
 Turn the badges off with `showLaunchCounts`, the ranking with `showMostUsed`,
 and the chart alone with `showUsageChart`. The file is still kept either way.
 
+An application that has never been opened from here shows `0` rather than no
+badge at all — a counter that only appears once you have used it is a counter
+nobody finds on the day they install the plugin.
+
+### Sorting by what you use
+
+Each category orders its tiles most-launched first. It is a view over the
+counts, not a rewrite: the order in `quick-apps.json` stays exactly as you
+arranged it, applications you have never opened keep that order among
+themselves, and turning `sortByUsage` off puts everything straight back.
+
+While the sort is on, the per-tile `‹ ›` buttons are hidden. The order is
+derived at that point, so a move button could only lie about what it does —
+turn the sort off if you want to arrange tiles by hand.
+
 ### The chart
 
 The ranking sits next to a small instrument: one glowing arc per application,
@@ -164,6 +183,16 @@ It is deliberately not a bar chart, a pie or a donut. Those spend their ink on
 comparing every slice against every other, which is not the question here: the
 rows beside it already carry the exact numbers, so what is left for the chart is
 the shape of the habit at a glance.
+
+## The bar mark
+
+The icon in the bar is a downward-pointing triangle with an S cut out of it —
+the triangle for the panel it drops, the S for samara. It is painted rather
+than shipped as an image, so it takes the bar's own colour and its active tint,
+and stays crisp at whatever height your bar happens to be.
+
+To use a glyph instead, put one in `icon`; the old default was `󰀻`. An
+empty `icon` means the drawn mark.
 
 ## Colours
 
@@ -229,18 +258,19 @@ plugin settings UI, which builds a form from the manifest schema.
 | `hoverOpenDelay` | integer (ms) | `140` | How long the pointer has to stay before it opens |
 | `hoverCloseDelay` | integer (ms) | `280` | Grace period after the pointer leaves both icon and panel |
 | `backgroundOpacity` | integer (%) | `82` | Opacity of the panel background |
-| `iconSize` | integer (px) | `34` | Size of each application icon |
+| `iconSize` | integer (px) | `30` | Size of each application icon |
 | `columns` | integer | `5` | Tiles per row — this is what sets the panel's width |
-| `maxHeight` | integer (px) | `480` | Height at which the grid starts scrolling instead of growing |
+| `maxHeight` | integer (px) | `520` | Height at which the scrolling grid starts scrolling instead of growing. The most-used strip sits above it and is not charged against this |
 | `showLabels` | boolean | `true` | Print application names under the icons |
 | `showMostUsed` | boolean | `true` | Rank your busiest applications above the categories |
 | `mostUsedCount` | integer | `5` | How many the ranking lists, and how many orbits the chart draws (1–6) |
 | `showUsageChart` | boolean | `true` | Draw the chart beside the ranking |
 | `showLaunchCounts` | boolean | `true` | Print the launch-count badge on each tile |
+| `sortByUsage` | boolean | `true` | Order the tiles in each category most-launched first |
 | `countIcon` | string | `` | Glyph shown next to a launch count |
 | `categoryTint` | integer (%) | `30` | How strongly a category's colour washes its background; `30` is 70% transparent, `0` is off |
 | `seedOnFirstRun` | boolean | `true` | Fill the categories from installed applications the first time |
-| `icon` | string | `󰀻` | Glyph shown in the bar |
+| `icon` | string | *(empty)* | Glyph shown in the bar; empty means the drawn mark |
 | `configPath` | path | *(empty)* | Where the categories are stored; empty means `~/.config/omarchy/quick-apps.json` |
 
 ```jsonc
@@ -273,7 +303,9 @@ tile. They live in `~/.config/omarchy/quick-apps.json`:
 
 `apps` holds desktop-entry ids — the `.desktop` filename without its extension.
 `color` is optional; an empty or missing one follows the palette by position.
-The order of the list is the order of the panel.
+The order of the list is the order you arranged, which is what the panel shows
+with `sortByUsage` off — with it on, the panel sorts that list by launch count
+for display without touching the file.
 The file is watched, so editing it by hand updates the panel immediately, and
 anything malformed in it is ignored rather than thrown away. An application
 whose `.desktop` file has since disappeared keeps its tile, greyed out, so you
@@ -328,6 +360,13 @@ to "opens from this launcher, since you added this here" gives up reach for a
 claim the panel can actually stand behind — and it is the number the ranking
 needs anyway, since the point of the ranking is what to put *in* the launcher.
 
+**Sorting as a view, never as a write.** It would have been simpler to reorder
+`quick-apps.json` every time a count changed, and much worse: the file would
+churn on every launch, a hand-arranged order would be destroyed the first time
+the sort was switched on, and turning it off again would have nothing to
+restore. Sorting at render time costs one comparison per tile and keeps the
+user's arrangement intact underneath it.
+
 **Committing a drag on release.** The panel's categories come from a plain JS
 array rebuilt on every config change, which re-creates the whole `Repeater` —
 including the delegate holding the pressed pointer. Reordering live as you drag
@@ -358,10 +397,12 @@ the problem — `omarchy menu keybindings --print` shows what is registered.
 keyboard, which means one opened from the keybinding — a hover or click open
 deliberately leaves the keyboard alone.
 
-**Every count is zero.** They start at zero — on a fresh install, on an upgrade
-from 1.0.0, and for any application the moment you add it to a category. Only
+**Every count is zero and the ranking says nothing has been opened.** That is
+the honest starting state — counts begin at zero on a fresh install, on an
+upgrade, and for any application the moment you add it to a category. Only
 launches made from this panel are counted, so opening things from a terminal or
-a menu will not move them.
+a menu will not move them. Launch a few things from the panel and the ranking,
+the chart and the sort all fill in.
 
 **A count went back to zero on its own.** The application left its category at
 some point — removed by hand, or by an edit to `quick-apps.json` — and the count
@@ -369,6 +410,10 @@ went with it, by design. Re-adding starts a new one.
 
 **The counter glyph is a box.** Your bar font has no glyph at that code point.
 Set `countIcon` to any character it does carry, or an empty string.
+
+**The tiles are not in the order I put them in.** `sortByUsage` is on by
+default: each category orders itself most-launched first. Turn it off and your
+arrangement comes straight back — it was never overwritten.
 
 **An icon is missing or generic.** The application's `.desktop` entry names an
 icon your theme does not carry. The panel falls back to a generic one rather

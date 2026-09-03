@@ -20,6 +20,9 @@ Item {
   property bool missing: false
   property bool canMoveLeft: false
   property bool canMoveRight: false
+  // False while the grid is sorted by launch count: the tile order is derived
+  // then, so a move button would either lie or fight the sort.
+  property bool canReorder: true
   // Times this application has been opened from the launcher since it was put
   // in its category; 0 hides the badge entirely.
   property int launchCount: 0
@@ -91,7 +94,8 @@ Item {
   // Top right at rest; edit mode wants that corner for the remove button, and
   // a count is not what you are looking at while rearranging anyway.
   CountBadge {
-    visible: root.showCount && !root.editing && root.launchCount > 0
+    visible: root.showCount && !root.editing
+    showZero: true
     count: root.launchCount
     countIcon: root.countIcon
     accent: root.accent
@@ -131,7 +135,7 @@ Item {
   }
 
   Row {
-    visible: root.editing && root.highlighted
+    visible: root.editing && root.highlighted && root.canReorder
     spacing: Style.space(2)
     anchors.horizontalCenter: parent.horizontalCenter
     anchors.bottom: parent.bottom

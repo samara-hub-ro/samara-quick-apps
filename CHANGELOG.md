@@ -9,6 +9,48 @@ for each release.
 
 ## [Unreleased]
 
+## [1.2.0] — 2026-09-03
+
+Everything 1.1.0 added was invisible until you had used it: the ranking hid
+itself while every count was zero, and so did every badge. That is fixed here,
+along with the layout and the sorting the counts were always meant to drive.
+
+### Added
+
+- **Sort tiles by launch count.** Each category orders itself most-launched
+  first, so what you reach for rises to the front of its group on its own. It
+  is a view over the counts, not a rewrite: your arranged order stays in
+  `quick-apps.json` untouched, applications you have never opened keep it, and
+  `sortByUsage` puts everything straight back. While the sort is on, the
+  per-tile `‹ ›` buttons are hidden — the order is derived, so a move button
+  would only lie about it.
+- **A drawn bar mark**: a downward-pointing triangle with an S cut out of it,
+  replacing the borrowed grid glyph. It is painted rather than shipped as an
+  image, so it takes the bar's own colour and its active tint, and stays crisp
+  at any bar height. Setting `icon` to any glyph still overrides it.
+
+### Changed
+
+- **The most-used strip now appears as soon as there is anything in the
+  launcher**, not only once something has been launched. With no launches yet
+  it says so and shows the chart idle, which is the state anyone installing
+  this sees on their first day.
+- **Launch badges show `0` as well.** They only appeared above zero before,
+  which meant the counter was invisible on exactly the day someone would go
+  looking for it. A zero badge sits at a third of the opacity of a real one.
+- **A wider card and roomier tiles.** The strip sets a floor on the card's
+  width so the ranking and the chart both have room; the slack that creates is
+  handed to the tiles rather than left hanging off the right of every category,
+  so `columns` still means columns and labels elide later.
+- **A bigger chart**, sized from `mostUsedCount` rather than from the rows that
+  happen to be filled, so it is the same instrument whether idle or full and
+  the strip does not resize itself as counts come in.
+- **Smaller icons (`iconSize` 34 → 30) and a taller grid (`maxHeight` 480 →
+  520)**, so more of the launcher fits before it starts scrolling.
+- **`maxHeight` is now the scrolling grid's own budget.** The most-used strip
+  sits above it and is charged to the screen instead, so turning the strip on
+  no longer silently shortens the grid.
+
 ## [1.1.0] — 2026-09-03
 
 ### Added
@@ -110,6 +152,7 @@ First public release.
   exposes it, for the same icon resolution and launch feedback as the Omarchy
   menu, and falls back to the desktop entry itself otherwise.
 
-[Unreleased]: https://github.com/samara-hub-ro/samara-quick-apps/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/samara-hub-ro/samara-quick-apps/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.2.0
 [1.1.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.1.0
 [1.0.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.0.0

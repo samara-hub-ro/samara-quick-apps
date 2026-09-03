@@ -46,17 +46,20 @@ Panel {
   readonly property int hoverOpenDelay: Math.max(0, Math.round(Number(setting("hoverOpenDelay", 140))))
   readonly property int hoverCloseDelay: Math.max(0, Math.round(Number(setting("hoverCloseDelay", 280))))
   readonly property real surfaceOpacity: Util.clampAlpha(Number(setting("backgroundOpacity", 82)) / 100)
-  readonly property int iconSize: Math.max(16, Math.round(Number(setting("iconSize", 34))))
+  readonly property int iconSize: Math.max(16, Math.round(Number(setting("iconSize", 30))))
   readonly property int columns: Math.max(2, Math.round(Number(setting("columns", 5))))
   readonly property bool showLabels: setting("showLabels", true) === true
-  readonly property int maxHeight: Math.max(Style.space(160), Math.round(Number(setting("maxHeight", 480))))
-  readonly property string barIcon: String(setting("icon", "󰀻"))
+  readonly property int maxHeight: Math.max(Style.space(160), Math.round(Number(setting("maxHeight", 520))))
+  // Empty means the drawn mark: a downward triangle with an S cut out of it.
+  // Any glyph put here replaces it, which is how the old default is restored.
+  readonly property string barIcon: String(setting("icon", ""))
   readonly property bool seedOnFirstRun: setting("seedOnFirstRun", true) === true
 
   readonly property bool showMostUsed: setting("showMostUsed", true) === true
   readonly property int mostUsedCount: Math.max(1, Math.min(6, Math.round(Number(setting("mostUsedCount", 5)))))
   readonly property bool showUsageChart: setting("showUsageChart", true) === true
   readonly property bool showLaunchCounts: setting("showLaunchCounts", true) === true
+  readonly property bool sortByUsage: setting("sortByUsage", true) === true
   readonly property string countIcon: String(setting("countIcon", ""))
   // Alpha of each category's background wash, in percent. 30 is the default —
   // 70% transparent, present enough to group the tiles under it and far too
@@ -220,7 +223,14 @@ Panel {
 
   // ------------------------------------------------------------------ config
 
-  readonly property var sections: Model.buildSections(root.config, root.filterText, function(id) { return root.describe(id) })
+  // Sorting is a live binding on the counts, not a rewrite of the config: the
+  // stored order stays exactly as the user arranged it, and turning the sort
+  // off puts it straight back.
+  readonly property var sections: Model.buildSections(
+    root.config,
+    root.filterText,
+    function(id) { return root.describe(id) },
+    root.sortByUsage ? function(id) { return Usage.countOf(root.usage, id) } : null)
   readonly property var flatApps: Model.flatten(root.sections)
 
   // Deliberately a function, not a `readonly property var` bound to `config`.
@@ -589,36 +599,57 @@ Panel {
   // ------------------------------------------------------------------ layout
 
   readonly property int tileSpacing: Style.space(6)
-  readonly property int tileWidth: Math.max(root.iconSize + Style.space(18), root.showLabels ? Style.space(74) : root.iconSize + Style.space(18))
   readonly property int categoryPadding: Style.space(8)
-  // The card has to be wide enough for `columns` tiles *inside* a category's
-  // padded block — otherwise turning the tint on would quietly cost a column.
-  readonly property int gridWidth: root.columns * root.tileWidth
+  readonly property int minTileWidth: Math.max(root.iconSize + Style.space(18),
+    root.showLabels ? Style.space(74) : root.iconSize + Style.space(18))
+
+  // The narrowest card that still fits `columns` tiles *inside* a category's
+  // padded block — otherwise the tint would quietly cost a column.
+  readonly property int gridWidth: root.columns * root.minTileWidth
     + (root.columns - 1) * root.tileSpacing
     + root.categoryPadding * 2
+
+  readonly property int cardWidth: Math.max(root.gridWidth, root.heroAvailable ? root.heroWidth : 0)
+
+  // The most-used strip sets a floor on the card's width, so the card is often
+  // wider than the grid strictly needs. Rather than leave that slack hanging
+  // off the right of every category, hand it to the tiles: `columns` still
+  // means columns, they are just roomier and their labels elide later.
+  readonly property int tileWidth: Math.max(root.minTileWidth,
+    Math.floor((panel.innerWidth - root.categoryPadding * 2 - (root.columns - 1) * root.tileSpacing) / root.columns))
 
   // ---- most-used strip -------------------------------------------------
 
   // Whether the strip has anything to say at all. Kept separate from whether
   // it is on screen right now, because the panel's width is derived from it
   // and a card that changes width as you start typing is a card that jumps.
-  readonly property bool heroAvailable: root.showMostUsed && root.topApps.length > 0
+  // Available as soon as there is anything in the launcher at all, not only
+  // once something has been launched: a strip that stays invisible until the
+  // counts fill up is a feature nobody discovers on the day they install it.
+  readonly property bool heroAvailable: root.showMostUsed && root.currentAppIds().length > 0
   // Editing is about the categories, and a filtered grid is about one search —
   // the ranking is noise in both.
   readonly property bool heroVisible: root.heroAvailable && !root.editMode && root.filterText.length === 0
+  // Nothing has been launched from here yet.
+  readonly property bool heroIdle: root.topApps.length === 0
 
-  readonly property int heroIconSize: Math.max(Style.space(16), Math.min(Style.space(24), Math.round(root.iconSize * 0.6)))
-  readonly property int heroRowHeight: Math.max(root.heroIconSize, Style.font.body) + Style.space(6)
+  readonly property int heroIconSize: Math.max(Style.space(16), Math.min(Style.space(22), Math.round(root.iconSize * 0.62)))
+  readonly property int heroRowHeight: Math.max(root.heroIconSize, Style.font.body) + Style.space(4)
   readonly property int heroRowsHeight: root.topApps.length > 0
     ? root.topApps.length * root.heroRowHeight + (root.topApps.length - 1) * Style.space(2)
     : 0
+  // Sized from `mostUsedCount` rather than from the rows actually present, so
+  // the chart is the same instrument whether it is idle, half full, or full,
+  // and the strip does not resize itself as the counts come in.
+  readonly property int chartBasis: root.mostUsedCount * root.heroRowHeight
+    + (root.mostUsedCount - 1) * Style.space(2) + Style.space(12)
   readonly property int chartSize: root.showUsageChart
-    ? Math.max(Style.space(72), Math.min(Style.space(112), root.heroRowsHeight))
+    ? Math.max(Style.space(84), Math.min(Style.space(128), root.chartBasis))
     : 0
-  readonly property int heroHeight: Math.max(root.chartSize, root.heroRowsHeight)
-  // A ranking squeezed into a two-column panel is unreadable, so the strip
-  // sets a floor on the card's width when it can appear.
-  readonly property int heroWidth: Style.space(320)
+  readonly property int heroHeight: Math.max(root.chartSize, root.heroRowsHeight, Style.space(44))
+  // A ranking squeezed into a narrow panel is unreadable, and the chart wants
+  // room to be worth drawing, so the strip sets a floor on the card's width.
+  readonly property int heroWidth: Style.space(470)
 
   // ------------------------------------------------------------------- edits
 
@@ -700,11 +731,20 @@ Panel {
 
   // -------------------------------------------------------------- bar button
 
+  Component {
+    id: brandMark
+
+    BrandMark {
+      color: button.active && button.useActiveColor ? button.activeColor : button.foreground
+    }
+  }
+
   BarIconButton {
     id: button
     anchors.fill: parent
     bar: root.bar
     text: root.barIcon
+    iconComponent: root.barIcon.length > 0 ? null : brandMark
     // The tooltip would land on top of the panel it just opened, so it only
     // exists while the panel is shut.
     tooltipText: root.opened ? "" : "Quick Apps"
@@ -731,7 +771,7 @@ Panel {
     keyboardMode: root.keyboardMode
     focusTarget: keyCatcher
     surfaceOpacity: root.surfaceOpacity
-    contentWidth: panel.fittedContentWidth(Math.max(root.gridWidth, root.heroAvailable ? root.heroWidth : 0))
+    contentWidth: panel.fittedContentWidth(root.cardWidth)
     contentHeight: panel.fittedContentHeight(root.pickerOpen ? Style.space(340) : body.implicitHeight)
 
     Item {
@@ -826,8 +866,26 @@ Panel {
           visible: root.heroVisible
           height: root.heroVisible ? root.heroHeight : 0
 
+          // Before anything has been launched from here, say so rather than
+          // showing an empty box: the counter is the one feature of this panel
+          // that has nothing to show on its first day.
+          Text {
+            visible: root.heroIdle
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            text: "Nothing opened from here yet. Launch something and your most used will rank itself, counting from the day each application joined its category."
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            anchors.left: parent.left
+            anchors.right: chart.left
+            anchors.rightMargin: root.showUsageChart ? Style.space(12) : 0
+            anchors.verticalCenter: parent.verticalCenter
+          }
+
           Column {
             id: heroRows
+            visible: !root.heroIdle
             anchors.left: parent.left
             anchors.right: chart.left
             anchors.rightMargin: root.showUsageChart ? Style.space(10) : 0
@@ -866,6 +924,7 @@ Panel {
             series: root.topApps
             maxCount: root.maxUsage
             total: root.usageTotal
+            placeholderRings: root.mostUsedCount
             foreground: root.panelForeground
             fontFamily: root.fontFamily
             anchors.right: parent.right
@@ -1203,6 +1262,7 @@ Panel {
                         selected: root.cursorActive && root.selectedIndex === flatIndex
                         canMoveLeft: index > 0
                         canMoveRight: index < section.modelData.apps.length - 1
+                        canReorder: !root.sortByUsage
                         launchCount: root.launchCountOf(modelData.id)
                         showCount: root.showLaunchCounts
                         countIcon: root.countIcon
@@ -1357,11 +1417,13 @@ Panel {
 
   // A launcher that fills the screen is not a discreet launcher: the grid
   // scrolls past `maxHeight` instead of growing, and the screen's own room
-  // caps it after that. The most-used strip is above the scroll, so it comes
-  // out of the same budget.
+  // caps it after that. `maxHeight` is the scrolling grid's own budget — the
+  // most-used strip sits above it and is charged to the screen, not to the
+  // setting, so turning the strip on does not silently shorten the grid.
   readonly property int maxBodyHeight: Math.max(Style.space(120),
-    Math.min(root.maxHeight, Math.round(panel.availableCardHeight - Style.space(110)))
-      - (root.heroVisible ? root.heroHeight + Style.space(16) : 0))
+    Math.min(root.maxHeight,
+      Math.round(panel.availableCardHeight - Style.space(110)
+        - (root.heroVisible ? root.heroHeight + Style.space(16) : 0))))
 
   onPickerOpenChanged: {
     if (root.pickerOpen) Qt.callLater(function() { if (root.pickerOpen) picker.focusSearch() })

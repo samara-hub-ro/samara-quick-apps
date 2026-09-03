@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "samara-hub-ro.quick-apps",
   "name": "Quick Apps",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "samara-hub-ro",
   "license": "MIT",
   "description": "A discreet launcher in the Omarchy bar: your most-used applications, grouped into your own colour-coded categories, opening on hover — with a launch counter on every tile and a ranking of what you actually reach for.",
@@ -23,15 +23,17 @@
       "hoverOpenDelay": 140,
       "hoverCloseDelay": 280,
       "backgroundOpacity": 82,
-      "iconSize": 34,
+      "iconSize": 30,
       "columns": 5,
       "showLabels": true,
-      "maxHeight": 480,
+      "maxHeight": 520,
       "showMostUsed": true,
       "mostUsedCount": 5,
       "showUsageChart": true,
       "showLaunchCounts": true,
-      "categoryTint": 30
+      "categoryTint": 30,
+      "icon": "",
+      "sortByUsage": true
     },
     "schema": [
       {
@@ -79,7 +81,7 @@
         "min": 20,
         "max": 72,
         "step": 2,
-        "defaultValue": 34
+        "defaultValue": 30
       },
       {
         "key": "columns",
@@ -95,11 +97,11 @@
         "key": "maxHeight",
         "type": "integer",
         "label": "Maximum height (px)",
-        "description": "How tall the panel is allowed to grow before the grid starts scrolling inside it.",
+        "description": "How tall the scrolling grid is allowed to grow before it starts scrolling inside the panel. The most-used strip sits above it and is not charged against this.",
         "min": 200,
         "max": 1400,
         "step": 20,
-        "defaultValue": 480
+        "defaultValue": 520
       },
       {
         "key": "showLabels",
@@ -140,6 +142,13 @@
         "defaultValue": true
       },
       {
+        "key": "sortByUsage",
+        "type": "boolean",
+        "label": "Sort tiles by launch count",
+        "description": "Order the tiles inside each category most-launched first, instead of the order you arranged them in. Applications you have never opened keep their stored order, and turning this off puts everything straight back — the sort never rewrites your file.",
+        "defaultValue": true
+      },
+      {
         "key": "countIcon",
         "type": "string",
         "label": "Counter glyph",
@@ -167,8 +176,8 @@
         "key": "icon",
         "type": "string",
         "label": "Bar icon",
-        "description": "Glyph shown in the bar. Any character your bar font carries.",
-        "defaultValue": "󰀻"
+        "description": "Glyph shown in the bar. Leave it empty for the drawn mark — a downward triangle with an S cut out of it — or put any character your bar font carries here to replace it.",
+        "defaultValue": ""
       },
       {
         "key": "configPath",

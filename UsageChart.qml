@@ -29,6 +29,9 @@ Item {
 
   // At most this many orbits fit before the rings are too thin to read.
   readonly property int maxRings: 6
+  // How many empty tracks to draw when there is nothing to show yet, so the
+  // instrument reads as idle rather than broken on the day it is installed.
+  property int placeholderRings: 5
 
   implicitWidth: Style.space(88)
   implicitHeight: Style.space(88)
@@ -114,7 +117,7 @@ Item {
 
       // ---- orbits ----------------------------------------------------------
       var list = (root.series || []).slice(0, root.maxRings)
-      var rings = Math.max(1, list.length)
+      var rings = Math.max(1, list.length > 0 ? list.length : Math.min(root.maxRings, root.placeholderRings))
       var band = (outer - inner - 2) / rings
       var stroke = Math.max(1.5, band * 0.56)
       // A notch at the top keeps a full-length arc from closing into a plain
@@ -125,6 +128,19 @@ Item {
       var ceiling = Math.max(1, root.maxCount)
 
       ctx.lineCap = "round"
+
+      // Idle: the tracks, and nothing on them.
+      if (list.length === 0) {
+        for (var e = 0; e < rings; e++) {
+          var idleRadius = outer - 1 - band * e - band / 2
+          if (idleRadius <= stroke) continue
+          ctx.beginPath()
+          ctx.strokeStyle = shade(0.11)
+          ctx.lineWidth = stroke
+          ctx.arc(cx, cy, idleRadius, start, start + span, false)
+          ctx.stroke()
+        }
+      }
 
       for (var i = 0; i < list.length; i++) {
         var item = list[i] || {}
@@ -185,7 +201,7 @@ Item {
 
     Text {
       textFormat: Text.PlainText
-      text: String(root.total)
+      text: root.total > 0 ? String(root.total) : "—"
       color: root.foreground
       font.family: root.fontFamily
       font.pixelSize: Style.font.bodySmall

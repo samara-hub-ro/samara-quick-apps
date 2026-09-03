@@ -243,18 +243,33 @@ function matchesQuery(entry, query) {
 // id to { id, name, detail, icon, missing } against the desktop-entry index;
 // entries whose .desktop file is gone still appear (greyed out) so the user
 // can see what to remove instead of silently losing a tile.
-function buildSections(config, query, describe) {
+//
+// `rankOf`, when given, is a function from an id to a number that sorts each
+// category's tiles high-to-low — the launch count, in practice. Ties keep the
+// stored order, so switching the sort on does not scramble a category whose
+// applications have never been opened.
+function buildSections(config, query, describe, rankOf) {
   var sections = []
   var categories = (config && config.categories) || []
+  var ranked = typeof rankOf === "function"
   var offset = 0
 
   for (var i = 0; i < categories.length; i++) {
     var category = categories[i]
-    var apps = []
+    var rows = []
     for (var j = 0; j < category.apps.length; j++) {
-      var app = describe(category.apps[j])
-      if (matchesQuery(app, query)) apps.push(app)
+      var entry = describe(category.apps[j])
+      if (matchesQuery(entry, query)) rows.push({ app: entry, order: j })
     }
+
+    if (ranked) {
+      rows.sort(function(a, b) {
+        return (rankOf(b.app.id) - rankOf(a.app.id)) || (a.order - b.order)
+      })
+    }
+
+    var apps = []
+    for (var k = 0; k < rows.length; k++) apps.push(rows[k].app)
     // `offset` is where this section starts in the flattened list, so a tile
     // can tell whether the keyboard cursor is on it without a second walk.
     sections.push({
