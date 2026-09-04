@@ -13,6 +13,29 @@
 
 var USAGE_VERSION = 1
 
+// The counts file is derived data, but it is still a file on disk that
+// somebody can put anything into, so it is bounded exactly like the categories
+// are: a fixed ceiling on entries, on id length and on the timestamps, checked
+// before the table is cloned, ranked or written back. `apps` above the ceiling
+// cannot happen from the launcher — `sync` prunes to the ids actually in it —
+// so a file that carries more of them is by definition not ours.
+
+var LIMITS = {
+  fileBytes: 262144,   // 256 KiB of JSON, before it is parsed
+  apps: 4096,
+  idChars: 255,
+  stampChars: 40       // an ISO-8601 instant, with room to spare
+}
+
+function limits() {
+  return LIMITS
+}
+
+function clampText(value, max) {
+  var text = String(value || "")
+  return text.length > max ? text.slice(0, max) : text
+}
+
 function emptyUsage() {
   return { version: USAGE_VERSION, apps: {} }
 }
@@ -35,8 +58,8 @@ function normalizeEntry(raw, nowIso) {
   var entry = (raw && typeof raw === "object") ? raw : {}
   return {
     count: normalizeCount(entry.count),
-    since: String(entry.since || "") || String(nowIso || ""),
-    last: String(entry.last || "")
+    since: clampText(entry.since, LIMITS.stampChars) || clampText(nowIso, LIMITS.stampChars),
+    last: clampText(entry.last, LIMITS.stampChars)
   }
 }
 
@@ -45,15 +68,23 @@ function normalize(raw, nowIso) {
   if (!raw || typeof raw !== "object") return out
   var apps = raw.apps
   if (!apps || typeof apps !== "object") return out
+  var kept = 0
   for (var id in apps) {
-    if (String(id).length === 0) continue
+    if (kept >= LIMITS.apps) break
+    if (String(id).length === 0 || String(id).length > LIMITS.idChars) continue
     out.apps[id] = normalizeEntry(apps[id], nowIso)
+    kept++
   }
   return out
 }
 
+function tooLarge(text) {
+  return String(text || "").length > LIMITS.fileBytes
+}
+
 function parse(text, nowIso) {
   var raw = null
+  if (tooLarge(text)) return null
   try {
     raw = JSON.parse(String(text || ""))
   } catch (e) {

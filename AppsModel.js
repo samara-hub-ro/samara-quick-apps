@@ -6,6 +6,41 @@
 
 var CONFIG_VERSION = 1
 
+// ------------------------------------------------------------------ limits
+//
+// Everything that comes off disk is bounded before it is cloned, sorted,
+// rendered or written back. The file is the user's to hand-edit, which is
+// exactly why it is treated as input: a category list a hundred thousand deep,
+// or a name a megabyte long, must cost the panel a truncation rather than the
+// shell's memory. The caps are far above any hand-built launcher and far below
+// anything that hurts.
+
+var LIMITS = {
+  fileBytes: 262144,     // 256 KiB of JSON, before it is parsed
+  categories: 64,
+  appsPerCategory: 256,
+  totalApps: 1024,
+  nameChars: 96,         // category name
+  idChars: 96,           // category id, after slugging
+  appIdChars: 255,       // a desktop-entry id; NAME_MAX bounds the real ones
+  displayChars: 160      // any string taken from a desktop entry
+}
+
+function limits() {
+  return LIMITS
+}
+
+// Trim, then cut to length. Used for everything that reaches a label.
+function clampText(value, max) {
+  var text = String(value || "").replace(/^\s+|\s+$/g, "")
+  return text.length > max ? text.slice(0, max) : text
+}
+
+// Strings that arrive from a desktop entry rather than from our own file.
+function clampDisplay(value) {
+  return clampText(value, LIMITS.displayChars)
+}
+
 function emptyConfig() {
   return { version: CONFIG_VERSION, categories: [] }
 }
@@ -20,6 +55,7 @@ function clone(config) {
 
 function slug(name) {
   var value = String(name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
+  if (value.length > LIMITS.idChars) value = value.replace(/-+$/g, "").slice(0, LIMITS.idChars).replace(/-+$/g, "")
   return value.length > 0 ? value : "category"
 }
 
@@ -36,6 +72,9 @@ function uniqueId(base, taken) {
 function normalizeAppId(value) {
   var id = String(value || "").trim()
   if (id.slice(-8) === ".desktop") id = id.slice(0, -8)
+  // Dropped rather than truncated: a cut id would silently name a different
+  // application, and no desktop entry is this long in the first place.
+  if (id.length > LIMITS.appIdChars) return ""
   return id
 }
 
@@ -79,19 +118,23 @@ function normalize(raw) {
 
   var categories = Array.isArray(raw.categories) ? raw.categories : []
   var takenIds = []
+  var total = 0
 
-  for (var i = 0; i < categories.length; i++) {
+  for (var i = 0; i < categories.length && out.categories.length < LIMITS.categories; i++) {
     var category = categories[i]
     if (!category || typeof category !== "object") continue
 
-    var name = String(category.name || "").trim()
+    var name = clampText(category.name, LIMITS.nameChars)
     if (name.length === 0) continue
 
     var apps = []
     var list = Array.isArray(category.apps) ? category.apps : []
-    for (var j = 0; j < list.length; j++) {
+    for (var j = 0; j < list.length && apps.length < LIMITS.appsPerCategory && total < LIMITS.totalApps; j++) {
       var appId = normalizeAppId(list[j])
-      if (appId.length > 0 && apps.indexOf(appId) === -1) apps.push(appId)
+      if (appId.length > 0 && apps.indexOf(appId) === -1) {
+        apps.push(appId)
+        total++
+      }
     }
 
     var id = slug(category.id || name)
@@ -105,8 +148,15 @@ function normalize(raw) {
   return out
 }
 
+// True for a file too big to be a launcher's category list. Checked before
+// JSON.parse, because the parse is itself the expensive part.
+function tooLarge(text) {
+  return String(text || "").length > LIMITS.fileBytes
+}
+
 function parse(text) {
   var raw = null
+  if (tooLarge(text)) return null
   try {
     raw = JSON.parse(String(text || ""))
   } catch (e) {
@@ -121,6 +171,13 @@ function isEmpty(config) {
     if (config.categories[i].apps.length > 0) return false
   }
   return config.categories.length === 0
+}
+
+function countApps(config) {
+  var categories = (config && config.categories) || []
+  var total = 0
+  for (var i = 0; i < categories.length; i++) total += (categories[i].apps || []).length
+  return total
 }
 
 function categoryIndex(config, categoryId) {
@@ -138,8 +195,9 @@ function categoryIndex(config, categoryId) {
 
 function addCategory(config, name) {
   var next = clone(config)
+  if (next.categories.length >= LIMITS.categories) return next
   var taken = next.categories.map(function(c) { return c.id })
-  var label = String(name || "").trim() || "New category"
+  var label = clampText(name, LIMITS.nameChars) || "New category"
   next.categories.push({ id: uniqueId(label, taken), name: label, color: "", apps: [] })
   return next
 }
@@ -148,7 +206,7 @@ function renameCategory(config, categoryId, name) {
   var next = clone(config)
   var index = categoryIndex(next, categoryId)
   if (index === -1) return next
-  var label = String(name || "").trim()
+  var label = clampText(name, LIMITS.nameChars)
   if (label.length === 0) return next
   next.categories[index].name = label
   return next
@@ -203,6 +261,8 @@ function addApp(config, categoryId, appId) {
   var index = categoryIndex(next, categoryId)
   var id = normalizeAppId(appId)
   if (index === -1 || id.length === 0) return next
+  if (next.categories[index].apps.length >= LIMITS.appsPerCategory) return next
+  if (countApps(next) >= LIMITS.totalApps) return next
   if (next.categories[index].apps.indexOf(id) === -1) next.categories[index].apps.push(id)
   return next
 }

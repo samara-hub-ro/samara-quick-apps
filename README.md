@@ -291,7 +291,11 @@ plugin settings UI, which builds a form from the manifest schema.
 | `categoryTint` | integer (%) | `30` | How strongly a category's colour washes its background; `30` is 70% transparent, `0` is off |
 | `seedOnFirstRun` | boolean | `true` | Fill the categories from installed applications the first time |
 | `icon` | string | *(empty)* | Glyph shown in the bar; empty means the drawn mark |
-| `configPath` | path | *(empty)* | Where the categories are stored; empty means `~/.config/omarchy/quick-apps.json` |
+| `configPath` | string | *(empty)* | Name of the categories file **inside `~/.config/omarchy/`** — `work.json`, say. Empty means `quick-apps.json`. Anything that is not a plain `.json` name in that directory is ignored and the default is used |
+
+Both files stay inside `~/.config/omarchy/`. `configPath` names one of them; it
+does not point anywhere, so there is no path for a stray value to escape down
+and no way for the counts to be written over the categories.
 
 ```jsonc
 {
@@ -336,6 +340,30 @@ the applications you have installed, bucketed by their own XDG categories
 (Internet, Development, Media, Office, System). It is a starting point, not a
 policy — rename it, regroup it, delete what you do not want. Turn
 `seedOnFirstRun` off to start from an empty panel instead.
+
+### What the panel will read
+
+Both files are treated as input, not as something the panel wrote and can
+therefore trust — you edit one of them by hand, and a file on disk is whatever
+happens to be on disk. So there are ceilings, checked before anything is parsed,
+cloned, sorted or drawn:
+
+| | Limit |
+|---|---|
+| Either file, on disk | 256 KiB — a bigger one is ignored, and left where it is |
+| Categories | 64 |
+| Applications in a category | 256 |
+| Applications in total | 1024 |
+| Category name | 96 characters |
+| Desktop-entry id | 255 characters |
+| Any text taken from a `.desktop` file | 160 characters |
+| Entries in the counts file | 4096 |
+
+They are far above any launcher anyone builds by hand and far below anything
+that costs the shell noticeable memory or a dropped frame. What goes over a
+ceiling is dropped, not truncated into something else: an over-long id would
+otherwise silently name a different application. The panel enforces the same
+ceilings on what *it* writes, so a file it saved always reads back identically.
 
 ## Transparency
 

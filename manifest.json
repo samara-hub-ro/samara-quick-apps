@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "samara-hub-ro.quick-apps",
   "name": "Quick Apps",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "author": "samara-hub-ro",
   "license": "MIT",
   "description": "A discreet launcher in the Omarchy bar: your most-used applications, grouped into your own colour-coded categories, opening on hover — counting every time you open them, from the panel or from anywhere else.",
@@ -189,9 +189,9 @@
       },
       {
         "key": "configPath",
-        "type": "path",
-        "label": "Categories file",
-        "description": "Where the categories and their applications are stored. Defaults to ~/.config/omarchy/quick-apps.json.",
+        "type": "string",
+        "label": "Categories file name",
+        "description": "Name of the file the categories are stored in, inside ~/.config/omarchy/ — for example work.json. Empty means quick-apps.json. The file is always in that directory: a name with a path in it is ignored and the default is used.",
         "defaultValue": ""
       }
     ]

@@ -9,6 +9,51 @@ for each release.
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-09-04
+
+Security hardening, from the marketplace review of 1.3.0. Nothing here changes
+what the panel does; it changes what it is willing to read and where it is
+willing to write.
+
+### Changed
+
+- **`configPath` names a file, it no longer points at one.** The categories and
+  the counts now always live in `~/.config/omarchy/`, and the setting picks the
+  file inside it — `work.json`, say. A value with a path in it is ignored with a
+  warning and the default is used, instead of being followed.
+
+  A widget that rewrites a file on every launch should not follow an arbitrary
+  path, and QML cannot check the things that would make following one safe: that
+  the target is a regular file, that it is yours, that no ancestor is a symlink
+  into somewhere else. A name inside a fixed directory needs none of those
+  checks, because there is nothing left to traverse. Names are one segment,
+  `[A-Za-z0-9][A-Za-z0-9._-]*.json`, at most 64 characters, no leading dot, no
+  `..`.
+
+  If you had pointed `configPath` somewhere else, move the file into
+  `~/.config/omarchy/` and set the setting to its name; until you do, the panel
+  reads `quick-apps.json` and says so in the log.
+
+- **The counts can no longer be written over the categories.** The `-usage.json`
+  suffix is reserved: a categories file may not be named with it, so the two
+  paths are distinct by construction rather than by arithmetic. A guard checks
+  it anyway and refuses.
+
+### Added
+
+- **Ceilings on everything read from disk**, checked before the file is parsed,
+  cloned, sorted, rendered or written back: 256 KiB per file, 64 categories, 256
+  applications per category, 1024 in total, 96-character category names,
+  255-character desktop-entry ids, 4096 entries in the counts file. A file over a
+  ceiling is ignored and left alone rather than rewritten. `README.md` lists them.
+
+  Text taken from a `.desktop` file — name, generic name, comment, icon — is
+  clamped to 160 characters for the same reason: it is somebody else's text and
+  it ends up in a label.
+
+  The panel holds itself to the same ceilings when adding a category or a tile,
+  so what it writes always reads back identically.
+
 ## [1.3.0] — 2026-09-03
 
 ### Added
@@ -199,7 +244,8 @@ First public release.
   exposes it, for the same icon resolution and launch feedback as the Omarchy
   menu, and falls back to the desktop entry itself otherwise.
 
-[Unreleased]: https://github.com/samara-hub-ro/samara-quick-apps/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/samara-hub-ro/samara-quick-apps/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.4.0
 [1.3.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.3.0
 [1.2.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.2.0
 [1.1.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.1.0

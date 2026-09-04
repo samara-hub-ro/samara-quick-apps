@@ -67,16 +67,61 @@ Panel {
   // faint to fight the icons.
   readonly property real categoryTint: Util.clampAlpha(Math.max(0, Math.min(70, Number(setting("categoryTint", 30)))) / 100)
 
-  readonly property string configPath: {
-    var custom = String(setting("configPath", "")).replace(/^\s+|\s+$/g, "")
-    if (custom.length > 0) return custom.replace(/^~/, Quickshell.env("HOME"))
-    return Quickshell.env("HOME") + "/.config/omarchy/quick-apps.json"
+  // Both files live inside Omarchy's own config directory, and the setting
+  // names one of them rather than pointing anywhere. A widget that rewrites a
+  // file on every launch has no business following an arbitrary path: a name
+  // cannot traverse out of the directory, cannot select a file that is not
+  // ours, and leaves nothing to check for ownership or a symlinked ancestor
+  // that QML has no way to check for anyway. Anything else falls back to the
+  // default instead of being honoured half-way.
+  readonly property string configDir: Quickshell.env("HOME") + "/.config/omarchy"
+  readonly property string defaultConfigName: "quick-apps.json"
+
+  // A bare name ("work.json") or, because that is the value the settings
+  // dialog shows, the full path of a file in that same directory.
+  function configNameFor(value) {
+    var raw = String(value || "").replace(/^\s+|\s+$/g, "")
+    if (raw.length === 0) return root.defaultConfigName
+
+    var name = raw
+    if (name.charAt(0) === "~") name = Quickshell.env("HOME") + name.slice(1)
+    var prefix = root.configDir + "/"
+    if (name.indexOf(prefix) === 0) name = name.slice(prefix.length)
+
+    // One path segment, no dot-file, no traversal, a name we recognise, and
+    // never the `-usage.json` suffix — that one belongs to the counts, and
+    // keeping the two namespaces disjoint is what makes it impossible for a
+    // count write to land on the categories.
+    var ok = name.length > 0 && name.length <= 64
+      && /^[A-Za-z0-9][A-Za-z0-9._-]*\.json$/.test(name)
+      && name.indexOf("..") === -1
+      && !/-usage\.json$/i.test(name)
+
+    if (!ok) {
+      console.warn("quick-apps: ignoring the categories file setting " + JSON.stringify(raw)
+        + " — it has to be the name of a .json file in " + root.configDir
+        + ", so " + root.defaultConfigName + " is being used instead")
+      return root.defaultConfigName
+    }
+    return name
   }
+
+  readonly property string configName: root.configNameFor(setting("configPath", ""))
+  readonly property string configPath: root.configDir + "/" + root.configName
 
   // Counts live beside the categories rather than inside them: they change on
   // every launch, and a rewrite-per-launch of the file the user hand-edits is
-  // a good way to lose a hand edit.
-  readonly property string usagePath: root.configPath.replace(/\.json$/i, "") + "-usage.json"
+  // a good way to lose a hand edit. `configName` can never carry the
+  // `-usage.json` suffix, so the two are distinct by construction; the guard
+  // is there because "distinct by construction" is worth failing loudly over.
+  readonly property string usagePath: {
+    var candidate = root.configDir + "/" + root.configName.replace(/\.json$/i, "") + "-usage.json"
+    if (candidate === root.configPath) {
+      console.warn("quick-apps: refusing to use the categories file for the counts")
+      return root.configDir + "/quick-apps-usage.json"
+    }
+    return candidate
+  }
 
   // ------------------------------------------------------------------- state
 
@@ -168,12 +213,14 @@ Panel {
     root.appsRevision  // binding dependency
     var entry = null
     try { entry = DesktopEntries.byId(id) } catch (e) { entry = null }
-    if (!entry) return { id: id, name: id, detail: "", icon: "", missing: true }
+    if (!entry) return { id: id, name: Model.clampDisplay(id), detail: "", icon: "", missing: true }
+    // Clamped for the same reason the config is: a .desktop file is somebody
+    // else's text, and every one of these strings ends up in a label.
     return {
       id: id,
-      name: String(entry.name || id),
-      detail: String(entry.genericName || entry.comment || ""),
-      icon: String(entry.icon || ""),
+      name: Model.clampDisplay(entry.name || id),
+      detail: Model.clampDisplay(entry.genericName || entry.comment || ""),
+      icon: Model.clampDisplay(entry.icon || ""),
       missing: false
     }
   }
@@ -188,12 +235,14 @@ Panel {
       var entry = values[i]
       if (!entry || entry.noDisplay) continue
       if (root.appLibrary && typeof root.appLibrary.isHiddenEntry === "function" && root.appLibrary.isHiddenEntry(entry)) continue
+      var appId = Model.normalizeAppId(entry.id)
+      if (appId.length === 0) continue
       rows.push({
-        id: Model.normalizeAppId(entry.id),
-        name: String(entry.name || entry.id),
-        detail: String(entry.genericName || entry.comment || ""),
-        icon: String(entry.icon || ""),
-        categories: entry.categories ? Array.prototype.slice.call(entry.categories) : [],
+        id: appId,
+        name: Model.clampDisplay(entry.name || entry.id),
+        detail: Model.clampDisplay(entry.genericName || entry.comment || ""),
+        icon: Model.clampDisplay(entry.icon || ""),
+        categories: entry.categories ? Array.prototype.slice.call(entry.categories, 0, 32) : [],
         noDisplay: false
       })
     }
@@ -246,6 +295,14 @@ Panel {
   function currentAppIds() { return Model.allAppIds(root.config) }
 
   function applyConfigText(text) {
+    if (Model.tooLarge(text)) {
+      // Bounded before the parse, which is the expensive half. Left on disk
+      // untouched, and the panel keeps what it already has.
+      console.warn("quick-apps: " + root.configPath + " is larger than "
+        + Math.round(Model.limits().fileBytes / 1024) + " KiB, ignoring it")
+      root.configLoaded = true
+      return
+    }
     var parsed = Model.parse(text)
     if (parsed === null) {
       // Unreadable file: keep whatever is on screen rather than wiping the
@@ -324,6 +381,14 @@ Panel {
   function launchCountOf(appId) { return Usage.countOf(root.usage, appId) }
 
   function applyUsageText(text) {
+    if (Usage.tooLarge(text)) {
+      console.warn("quick-apps: " + root.usagePath + " is larger than "
+        + Math.round(Usage.limits().fileBytes / 1024) + " KiB, starting the counts over")
+      root.usage = Usage.emptyUsage()
+      root.usageLoaded = true
+      root.syncUsage()
+      return
+    }
     var parsed = Usage.parse(text, root.nowIso())
     if (parsed === null) {
       // Counts are derived data, not something the user wrote — a file that
