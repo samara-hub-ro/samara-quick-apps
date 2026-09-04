@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "samara-hub-ro.quick-apps",
   "name": "Quick Apps",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "author": "samara-hub-ro",
   "license": "MIT",
   "description": "A discreet launcher in the Omarchy bar: your most-used applications, grouped into your own colour-coded categories, opening on hover — counting every time you open them, from the panel or from anywhere else.",

@@ -365,6 +365,32 @@ ceiling is dropped, not truncated into something else: an over-long id would
 otherwise silently name a different application. The panel enforces the same
 ceilings on what *it* writes, so a file it saved always reads back identically.
 
+### How it reads them
+
+Both files are read through `BoundedFile.qml`, not through `FileView`. A
+`FileView` opens the path and materialises all of it before QML sees a byte, so
+a size check on the result is not a boundary: a FIFO left in place of the file
+blocks the read, and an oversized file is already in memory before anything can
+reject it. QML has no syscall surface to fix that, so the boundary is produced
+by two short-lived commands:
+
+1. `stat -c '%F|%U|%s'` — `lstat`, so a symlink reports as `symbolic link` and a
+   FIFO as `fifo`. Anything that is not a regular file is refused, as is a file
+   owned by anyone but you, as is a size already over the ceiling.
+2. `dd if=<path> iflag=nofollow,nonblock bs=<limit+1> count=1` — `O_NOFOLLOW`
+   refuses a symlink at open time, `O_NONBLOCK` makes a FIFO return `EAGAIN`
+   instead of blocking, and one read of at most `limit+1` bytes is all that can
+   arrive. A file that grew past the ceiling between the two calls comes back
+   one byte too long and is rejected on that.
+
+Both run under `timeout`, with `PATH` pinned to `/usr/bin:/bin` and no shell,
+and both are killed by a watchdog and when the widget goes away.
+
+The `FileView` behind each file is kept for the two things that need no read:
+writing it, and noticing when something else changes it. A file that is refused
+is left exactly where it is — the panel keeps what it already had on screen and
+writes nothing over it.
+
 ## Transparency
 
 `backgroundOpacity` sets the panel's alpha over whatever is behind it; the

@@ -9,6 +9,38 @@ for each release.
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-09-04
+
+The second round of the marketplace security review, applied here from the
+review of the sibling plugin: the ceilings 1.4.0 added were checked only after
+`FileView` had opened the path and read all of it, which is not a boundary
+against a file that is not the one the panel wrote.
+
+### Added
+
+- **`BoundedFile.qml`, a producer-side bounded read**, now doing every read of
+  the categories file and the counts file. `stat` first — `lstat`, so a symlink
+  reports as `symbolic link` and a FIFO as `fifo` — refusing anything that is
+  not a regular file, anything owned by another user, and anything already over
+  the ceiling. Then `dd` with `iflag=nofollow,nonblock bs=<limit+1> count=1`:
+  `O_NOFOLLOW` refuses a symlink at open time, `O_NONBLOCK` makes a FIFO return
+  `EAGAIN` rather than block, and exactly one read of at most `limit+1` bytes
+  can arrive, so a file that grew in the window between the two calls is
+  rejected on what turned up rather than on a stale size.
+
+  Both run under `timeout` with a kill-after, with a built environment and no
+  shell, and both are stopped by a watchdog and on destruction.
+
+### Changed
+
+- **The `FileView` behind each file no longer reads it.** `blockAllReads` is on;
+  what is left is the write, which needs no read, and the change notification,
+  which is what tells the bounded reader to run. Hand edits still appear
+  immediately.
+- **A refused file is left alone**, exactly as an unparseable one always was:
+  the panel keeps what is on screen and writes nothing over it. A categories
+  file that is simply not there is still the ordinary first-run state.
+
 ## [1.4.0] — 2026-09-04
 
 Security hardening, from the marketplace review of 1.3.0. Nothing here changes
@@ -244,7 +276,8 @@ First public release.
   exposes it, for the same icon resolution and launch feedback as the Omarchy
   menu, and falls back to the desktop entry itself otherwise.
 
-[Unreleased]: https://github.com/samara-hub-ro/samara-quick-apps/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/samara-hub-ro/samara-quick-apps/compare/v1.5.0...HEAD
+[1.5.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.5.0
 [1.4.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.4.0
 [1.3.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.3.0
 [1.2.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.2.0

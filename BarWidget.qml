@@ -190,7 +190,13 @@ Panel {
   }
 
   onBarChanged: appLibrary = resolveAppLibrary()
-  Component.onCompleted: appLibrary = resolveAppLibrary()
+  Component.onCompleted: {
+    appLibrary = resolveAppLibrary()
+    // Nothing reads either file until this runs: with `blockAllReads` the
+    // views never load one on their own.
+    configReader.reload()
+    usageReader.reload()
+  }
 
   Connections {
     target: DesktopEntries.applications
@@ -316,6 +322,19 @@ Panel {
     root.configAuthoritative = true
   }
 
+  // A file the reader refused. "missing" is the ordinary first-run state — no
+  // file yet, so an empty launcher is the truth rather than a failure to read
+  // one. Anything else is a file that is there and is not ours to trust, which
+  // leaves the config non-authoritative; that is what stops the counts from
+  // being pruned against a config we do not actually know.
+  function configUnavailable(reason) {
+    root.configLoaded = true
+    if (reason !== "missing")
+      return
+    root.configAuthoritative = true
+    root.syncUsage()
+  }
+
   function saveConfig(next) {
     root.config = next
     root.savingConfig = true
@@ -334,19 +353,29 @@ Panel {
     root.saveConfig(Model.seed(entries, 6))
   }
 
+  // The file is written here and read through the bounded reader beside it.
+  // `blockAllReads` is what keeps those two apart: a FileView that reads opens
+  // the path and materialises whatever is there before QML can check anything,
+  // which is no boundary against a file that is not the one we wrote. What is
+  // left is the write, which needs no read, and the change notification, which
+  // is what tells the reader to run.
   FileView {
     id: configFile
     path: root.configPath
     watchChanges: true
     atomicWrites: true
     printErrors: false
-    onLoaded: root.applyConfigText(text())
-    onFileChanged: if (!root.savingConfig) reload()
-    onLoadFailed: {
-      // No file yet is the normal first-run state, not an error.
-      root.configLoaded = true
-      root.configAuthoritative = true
-    }
+    blockAllReads: true
+    onFileChanged: if (!root.savingConfig) configReader.reload()
+  }
+
+  BoundedFile {
+    id: configReader
+    path: root.configPath
+    limit: Model.limits().fileBytes
+    printErrors: true
+    onLoaded: function(text) { root.applyConfigText(text) }
+    onFailed: function(reason) { root.configUnavailable(reason) }
   }
 
   Timer {
@@ -400,6 +429,12 @@ Panel {
       return
     }
     root.usage = parsed
+    root.usageLoaded = true
+    root.syncUsage()
+  }
+
+  function usageUnavailable(reason) {
+    root.usage = Usage.emptyUsage()
     root.usageLoaded = true
     root.syncUsage()
   }
@@ -458,13 +493,19 @@ Panel {
     watchChanges: true
     atomicWrites: true
     printErrors: false
-    onLoaded: root.applyUsageText(text())
-    onFileChanged: if (!root.savingUsage) reload()
-    onLoadFailed: {
-      root.usageLoaded = true
-      root.syncUsage()
-    }
+    blockAllReads: true
+    onFileChanged: if (!root.savingUsage) usageReader.reload()
   }
+
+  BoundedFile {
+    id: usageReader
+    path: root.usagePath
+    limit: Usage.limits().fileBytes
+    printErrors: true
+    onLoaded: function(text) { root.applyUsageText(text) }
+    onFailed: function(reason) { root.usageUnavailable(reason) }
+  }
+
 
   Timer {
     id: usageGuard
