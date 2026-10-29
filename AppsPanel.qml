@@ -32,6 +32,12 @@ PanelWindow {
   property var borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
   property bool open: false
 
+  // A second item on the overlay layer that takes input while
+  // `extraInputActive` — the details card, so its Force quit button can be
+  // pressed from a hover-opened panel.
+  property Item extraInputItem: null
+  property bool extraInputActive: false
+
   // Keyboard focus is claimed only for an open the user asked for by hand —
   // the bar click or the shortcut. A panel that stole the keyboard just
   // because the cursor crossed a bar icon would eat the next keystroke of
@@ -40,7 +46,17 @@ PanelWindow {
   property Item focusTarget: null
   property bool focusPrimed: false
 
-  readonly property bool hovered: cardHover.hovered
+  // Gated on `open`: a card that closes under the pointer never gets the
+  // leave event, and a HoverHandler that still says "hovered" afterwards would
+  // keep the widget believing the pointer is on a panel that is not there.
+  readonly property bool hovered: open && cardHover.hovered
+
+  // Full-window layer above the card, for things drawn beside it — the details
+  // card. In hover mode only `extraInputItem` on it takes input.
+  readonly property Item overlayLayer: overlayHolder
+  // Where the pointer is over the card, in window (= overlay) coordinates.
+  readonly property point pointer: Qt.point(card.x + cardHover.point.position.x, card.y + cardHover.point.position.y)
+  readonly property Item cardItem: card
 
   default property alias contentItem: contentHolder.children
 
@@ -101,6 +117,15 @@ PanelWindow {
     item: root.keyboardMode ? null : card
     width: root.keyboardMode ? root.screenW : 0
     height: root.keyboardMode ? root.screenH : 0
+
+    Region {
+      intersection: Intersection.Combine
+      readonly property bool on: !root.keyboardMode && root.extraInputActive && root.extraInputItem !== null
+      x: on ? Math.round(root.extraInputItem.x) : 0
+      y: on ? Math.round(root.extraInputItem.y) : 0
+      width: on ? Math.round(root.extraInputItem.width) : 0
+      height: on ? Math.round(root.extraInputItem.height) : 0
+    }
   }
 
   // Outside-click dismissal, for the keyboard-open region only: in hover mode
@@ -254,5 +279,11 @@ PanelWindow {
       anchors.bottomMargin: card.contentBottomInset
       anchors.leftMargin: card.contentLeftInset
     }
+  }
+
+  Item {
+    id: overlayHolder
+    anchors.fill: parent
+    opacity: card.opacity
   }
 }

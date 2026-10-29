@@ -9,6 +9,95 @@ for each release.
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-10-29
+
+A redesign. The panel now draws in the theme's two colours and nothing else,
+and the room that the colour coding, the badges and the chart took is spent on
+getting to the right application faster.
+
+### Fixed
+
+- **Hover stopped opening the panel after launching from it.** Every close
+  disarmed hover until the pointer *left the icon* — but after a launch from
+  the panel the pointer is on the panel, not the icon, so the re-arm never came
+  and the next hover did nothing until the icon was clicked. Hover now stays
+  armed unless the panel was closed with the pointer on the icon itself (the
+  click-to-dismiss case the disarm was meant for). Reproduced against 1.5.0 and
+  verified fixed on a live shell.
+- **The card's hover state is gated on the panel being open**, so a card that
+  closes under the pointer — and never gets the leave event — cannot leave the
+  widget believing the pointer is still on it.
+
+### Added
+
+- **Now row** in place of the most-used ranking and its chart: the applications
+  you are most likely to want *at this hour*, scored from per-application
+  hour-of-day and day-of-week histograms (a circular Gaussian over the hours,
+  scaled by weekday affinity once there is a week of history, the all-time
+  count as tie-breaker). `1`–`9` launch it from the keyboard; the new IPC call
+  `launchSuggestion <n>` launches from it without opening the panel.
+- **Open-window marker and switching.** An application with a window open
+  carries an accent dot (one window) or bar (several). Clicking it activates
+  that window instead of starting a second copy, cycling through several;
+  middle-click or `Shift+Enter` always opens a new one. Switching feeds the
+  rhythm but does not count as a launch.
+- **Details card** beside the panel on hover (and on the keyboard cursor):
+  version, source (pacman, Flatpak, web app, AppImage, local entry), first
+  install from `pacman.log`, last update from pacman's *Install Date*, size,
+  package, launch count and last launch, category. Gathered by the new
+  `appinfo.sh` through the new `AppInfo.qml` — one lookup at a time, cached for
+  the session, under a timeout with a clean environment. Local `.desktop`
+  overrides are traced to the package owning their `Exec` binary.
+- **Ranked fuzzy search across everything installed.** Prefix, word-start,
+  initials (`vsc`), substring and in-order letters, best first, with your own
+  applications ahead at an equal match. Results show as one ranked list, so
+  `Enter` takes the best answer.
+- **Running section** at the bottom of the panel: CPU and memory of every open
+  application, a three-minute CPU sparkline, and the heaviest four by name
+  with a memory bar each. Measured per application from its systemd scope's
+  cgroup (every helper process included) by the new `procstats.sh` and
+  `ProcMonitor.qml`, every 3 seconds, in the background too. New
+  `Sparkline.qml`.
+- **Live cost in the details card** of an open application: CPU, memory, TCP
+  traffic received and sent since first seen (UDP/QUIC cannot be counted
+  without root, and the card says so), and its own CPU line.
+- **Force quit** in the details card: two clicks (arm, confirm), SIGTERM to the
+  whole scope, then SIGKILL via `cgroup.kill` if a window survives three
+  seconds. The new `killapp.sh` accepts only scopes under the user's own
+  `app.slice` or a single owned pid — never `session.slice`, where Hyprland and
+  the shell run.
+- **The details card takes input** while it is up (the layer's input region is
+  the panel plus the card), and a "safe triangle" keeps it from retargeting to
+  the tiles the pointer crosses on its way there.
+- Setting `showMonitor`.
+- **A search button** in the header hands a hover-opened panel the keyboard.
+- A visible search line with a result count and an accent caret whenever the
+  panel owns the keyboard.
+- Tiles cascade in on open, and the hovered icon lifts slightly.
+- Settings: `showSuggestions`, `suggestionCount`, `showRunning`,
+  `focusRunning`, `showDetails`, `detailsDelay`.
+
+### Changed
+
+- **Two colours, both the theme's**: popup text, and the accent for what is
+  live or chosen. Category washes, coloured headings, coloured badges and the
+  palette are gone; headings use the shell's own `PanelSectionHeader`.
+- `backgroundOpacity` defaults to `100`, matching the first-party panels.
+- The counts file gains `hours` (24) and `days` (7) per application. Files
+  from 1.x load as-is and fill them from the next launch.
+- Edit mode drops the colour swatches and the `↑ ↓` category buttons; drag
+  reorders.
+- The manifest settings are regrouped: panel, now row, open windows, details,
+  counting.
+
+### Removed
+
+- `UsageChart.qml`, `UsageRow.qml`, `CountBadge.qml`.
+- Settings `showMostUsed`, `mostUsedCount`, `showUsageChart`,
+  `showLaunchCounts`, `countIcon`, `categoryTint` (ignored if still present).
+- A category `color` in `quick-apps.json` is no longer drawn; it is still kept
+  in the file.
+
 ## [1.5.0] — 2026-09-04
 
 The second round of the marketplace security review, applied here from the
@@ -276,7 +365,8 @@ First public release.
   exposes it, for the same icon resolution and launch feedback as the Omarchy
   menu, and falls back to the desktop entry itself otherwise.
 
-[Unreleased]: https://github.com/samara-hub-ro/samara-quick-apps/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/samara-hub-ro/samara-quick-apps/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v2.0.0
 [1.5.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.5.0
 [1.4.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.4.0
 [1.3.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.3.0

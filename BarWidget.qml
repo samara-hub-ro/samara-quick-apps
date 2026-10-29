@@ -3,13 +3,15 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import Quickshell.Wayland
 import "AppsModel.js" as Model
 import "UsageModel.js" as Usage
+import "WindowMatch.js" as Match
 
 // Quick Apps — the apps you actually use, grouped into your own categories,
 // one hover away from the bar.
 //
-// Four things shape the implementation:
+// Five things shape the implementation:
 //
 //   * It opens on hover, so the popup surface must leave the bar's own hover
 //     alone. AppsPanel narrows the layer-shell input region to the card for
@@ -27,6 +29,10 @@ import "UsageModel.js" as Usage
 //     category — which is what lets the panel put the ones you reach for most
 //     at the top without pretending to know anything about the rest of your
 //     session.
+//   * It draws in two colours, both the theme's: popup text and accent. The
+//     accent is reserved for what is live or chosen — an application that is
+//     already open, the keyboard cursor, the "now" row — so it always means
+//     something when it appears.
 Panel {
   id: root
 
@@ -45,7 +51,7 @@ Panel {
   readonly property bool openOnHover: setting("openOnHover", true) === true
   readonly property int hoverOpenDelay: Math.max(0, Math.round(Number(setting("hoverOpenDelay", 140))))
   readonly property int hoverCloseDelay: Math.max(0, Math.round(Number(setting("hoverCloseDelay", 280))))
-  readonly property real surfaceOpacity: Util.clampAlpha(Number(setting("backgroundOpacity", 82)) / 100)
+  readonly property real surfaceOpacity: Util.clampAlpha(Number(setting("backgroundOpacity", 100)) / 100)
   readonly property int iconSize: Math.max(16, Math.round(Number(setting("iconSize", 30))))
   readonly property int columns: Math.max(2, Math.round(Number(setting("columns", 5))))
   readonly property bool showLabels: setting("showLabels", true) === true
@@ -55,17 +61,15 @@ Panel {
   readonly property string barIcon: String(setting("icon", ""))
   readonly property bool seedOnFirstRun: setting("seedOnFirstRun", true) === true
 
-  readonly property bool showMostUsed: setting("showMostUsed", true) === true
-  readonly property int mostUsedCount: Math.max(1, Math.min(6, Math.round(Number(setting("mostUsedCount", 5)))))
-  readonly property bool showUsageChart: setting("showUsageChart", true) === true
-  readonly property bool showLaunchCounts: setting("showLaunchCounts", true) === true
+  readonly property bool showSuggestions: setting("showSuggestions", true) === true
+  readonly property int suggestionCount: Math.max(1, Math.min(8, Math.round(Number(setting("suggestionCount", 5)))))
   readonly property bool sortByUsage: setting("sortByUsage", true) === true
   readonly property bool countExternalLaunches: setting("countExternalLaunches", true) === true
-  readonly property string countIcon: String(setting("countIcon", ""))
-  // Alpha of each category's background wash, in percent. 30 is the default —
-  // 70% transparent, present enough to group the tiles under it and far too
-  // faint to fight the icons.
-  readonly property real categoryTint: Util.clampAlpha(Math.max(0, Math.min(70, Number(setting("categoryTint", 30)))) / 100)
+  readonly property bool showDetails: setting("showDetails", true) === true
+  readonly property int detailsDelay: Math.max(0, Math.round(Number(setting("detailsDelay", 450))))
+  readonly property bool showRunning: setting("showRunning", true) === true
+  readonly property bool showMonitor: setting("showMonitor", true) === true
+  readonly property bool focusRunning: setting("focusRunning", true) === true
 
   // Both files live inside Omarchy's own config directory, and the setting
   // names one of them rather than pointing anywhere. A widget that rewrites a
@@ -146,9 +150,6 @@ Panel {
   property int selectedIndex: -1
   property bool cursorActive: false
 
-  // Category whose colour swatches are currently unfolded, "" for none.
-  property string paletteCategory: ""
-
   // Drag-to-reorder bookkeeping. The move is committed on release rather than
   // live: rewriting the config mid-drag rebuilds the Repeater, which destroys
   // the very delegate holding the pressed pointer.
@@ -168,7 +169,11 @@ Panel {
   // Bumped when the desktop-entry set changes so name/icon lookups re-run.
   property int appsRevision: 0
 
+  // The whole palette: the theme's popup text and its accent. Both are live
+  // bindings to the current Omarchy theme, so switching themes recolours the
+  // panel with it and nothing here ever names a colour of its own.
   readonly property color panelForeground: Color.popups.text
+  readonly property color accent: Color.accent
   readonly property color dim: Qt.darker(panelForeground, 1.5)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
@@ -257,7 +262,27 @@ Panel {
     return rows
   }
 
-  function launchApp(app) {
+  // A click on an application that is already open switches to it instead of
+  // starting a second copy — the common case for a launcher you reach for all
+  // day. With several windows open, each click moves on to the next one.
+  // Middle-click (`launchNew`) always starts a new one.
+  function activateApp(app) {
+    if (!app || !app.id) return
+    var windows = root.focusRunning ? root.windowsOf(app.id) : []
+    if (windows.length === 0) {
+      root.launchNew(app)
+      return
+    }
+    var next = 0
+    for (var i = 0; i < windows.length; i++) {
+      if (windows[i].activated) { next = (i + 1) % windows.length; break }
+    }
+    root.recordIntent(app.id)
+    root.close()
+    try { windows[next].activate() } catch (e) { root.launchNew(app) }
+  }
+
+  function launchNew(app) {
     if (!app || !app.id) return
     root.recordLaunch(app.id)
     // The window this is about to open would otherwise be counted again when
@@ -286,11 +311,12 @@ Panel {
   // Sorting is a live binding on the counts, not a rewrite of the config: the
   // stored order stays exactly as the user arranged it, and turning the sort
   // off puts it straight back.
-  readonly property var sections: Model.buildSections(
-    root.config,
-    root.filterText,
-    function(id) { return root.describe(id) },
-    root.sortByUsage ? function(id) { return Usage.countOf(root.usage, id) } : null)
+  readonly property var sections: root.filterText.length > 0
+    ? Model.searchSections(root.config, root.installedEntries(), root.filterText,
+        function(id) { return root.describe(id) }, root.columns * 4)
+    : Model.buildSections(root.config,
+        function(id) { return root.describe(id) },
+        root.sortByUsage ? function(id) { return Usage.countOf(root.usage, id) } : null)
   readonly property var flatApps: Model.flatten(root.sections)
 
   // Deliberately a function, not a `readonly property var` bound to `config`.
@@ -386,28 +412,32 @@ Panel {
 
   // ------------------------------------------------------------------- usage
 
-  readonly property var topApps: {
-    if (!root.showMostUsed) return []
-    var rows = Usage.ranked(root.usage, root.currentAppIds(), root.mostUsedCount)
+  // Local hour and weekday, refreshed each time the panel opens: the "now"
+  // row is a question about this moment, and a binding to the clock would
+  // reshuffle it under the pointer.
+  property int nowHour: 0
+  property int nowDay: 0
+
+  function refreshClock() {
+    var d = new Date()
+    root.nowHour = d.getHours()
+    root.nowDay = d.getDay()
+  }
+
+  readonly property var suggestions: {
+    if (!root.showSuggestions) return []
+    var rows = Usage.predict(root.usage, root.currentAppIds(), root.nowHour, root.nowDay, root.suggestionCount)
     var out = []
-    for (var i = 0; i < rows.length; i++) {
-      var app = root.describe(rows[i].id)
-      out.push({
-        id: rows[i].id,
-        name: app.name,
-        icon: app.icon,
-        missing: app.missing,
-        count: rows[i].count,
-        color: Model.colorForApp(root.config, rows[i].id)
-      })
-    }
+    for (var i = 0; i < rows.length; i++) out.push(root.describe(rows[i].id))
     return out
   }
 
-  readonly property int usageTotal: Usage.totalOf(root.usage, root.currentAppIds())
-  readonly property int maxUsage: root.topApps.length > 0 ? root.topApps[0].count : 1
-
-  function launchCountOf(appId) { return Usage.countOf(root.usage, appId) }
+  readonly property string nowLabel: {
+    var d = new Date()
+    d.setHours(root.nowHour, 0, 0, 0)
+    var days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+    return days[root.nowDay] + ", " + d.toLocaleTimeString(Qt.locale(), "HH:mm")
+  }
 
   function applyUsageText(text) {
     if (Usage.tooLarge(text)) {
@@ -464,7 +494,16 @@ Panel {
     if (!root.usageLoaded) return
     var id = Model.normalizeAppId(appId)
     if (root.currentAppIds().indexOf(id) === -1) return
-    var next = Usage.record(root.usage, id, root.nowIso())
+    var d = new Date()
+    var next = Usage.record(root.usage, id, root.nowIso(), d.getHours(), d.getDay())
+    if (next === null) return
+    root.saveUsage(next)
+  }
+
+  function recordIntent(appId) {
+    if (!root.usageLoaded) return
+    var d = new Date()
+    var next = Usage.recordIntent(root.usage, Model.normalizeAppId(appId), root.nowIso(), d.getHours(), d.getDay())
     if (next === null) return
     root.saveUsage(next)
   }
@@ -485,6 +524,366 @@ Panel {
     appIds: root.currentAppIds()
 
     onLaunched: function(appId) { root.recordLaunch(appId) }
+  }
+
+  // ----------------------------------------------------------------- running
+
+  // Which launcher applications have a window open right now, as
+  // id -> [Toplevel]. Worked out only while the panel is up, from the same
+  // window-class rules the counter uses — including their refusal to guess
+  // when a window could belong to two applications.
+  property int toplevelRevision: 0
+
+  Connections {
+    target: ToplevelManager.toplevels
+    function onObjectInsertedPost() { root.toplevelRevision++ }
+    function onObjectRemovedPost() { root.toplevelRevision++ }
+  }
+
+  readonly property var runningMap: {
+    root.toplevelRevision  // binding dependency
+    if (!root.opened || (!root.showRunning && !root.focusRunning)) return ({})
+    var values = []
+    try { values = ToplevelManager.toplevels.values || [] } catch (e) { values = [] }
+    var ids = root.currentAppIds()
+    var map = {}
+    for (var i = 0; i < values.length; i++) {
+      var cls = ""
+      try { cls = String(values[i].appId || "") } catch (e) { cls = "" }
+      var id = Match.resolve(cls, ids, function(x) { return windowWatcher.entryFor(x) })
+      if (id.length === 0) continue
+      if (!map[id]) map[id] = []
+      map[id].push(values[i])
+    }
+    return map
+  }
+
+  function windowsOf(appId) { return root.runningMap[appId] || [] }
+  function windowCountOf(appId) { return root.showRunning ? root.windowsOf(appId).length : 0 }
+
+  // ----------------------------------------------------------------- details
+
+  AppInfo { id: appInfo }
+
+  // The tile the details card is about, and where it sits on screen. Set on
+  // hover (and on keyboard selection), shown after `detailsDelay`.
+  //
+  // Once the card is up it can be reached with the pointer — it carries the
+  // Force quit button — and the way there crosses the other tiles in the row.
+  // So a card that is already showing does not jump to every tile it passes:
+  // it retargets only once the pointer has rested on a new tile for
+  // `retargetDelay` — and not at all while the pointer is still travelling
+  // inside the triangle between where it left its tile and the card's near
+  // edge (the "safe triangle" of nested menus). Stopping on a tile, anywhere,
+  // retargets; heading for the card never does.
+  property var detailsApp: null
+  property string detailsCategory: ""
+  property real detailsAnchorY: 0
+  property bool detailsShown: false
+
+  property var pendingApp: null
+  property string pendingCategory: ""
+  property real pendingAnchorY: 0
+  readonly property int retargetDelay: 220
+  property point aimFrom: Qt.point(-1, -1)
+
+  readonly property bool detailsVisible: root.showDetails && root.detailsShown && root.detailsApp !== null
+    && root.opened && !root.busyEditing
+  readonly property bool pointerOnDetails: root.detailsVisible && details.hovered
+
+  function showDetailsFor(app, item, categoryName) {
+    if (!root.showDetails || !app || !item || root.busyEditing) return
+    detailsHideTimer.stop()
+    var y = item.mapToItem(panel.overlayLayer, 0, item.height / 2).y
+    if (!app.missing) appInfo.request(app.id)
+
+    if (!root.detailsShown || !root.detailsApp) {
+      root.setDetails(app, categoryName, y)
+      detailsShowTimer.restart()
+      return
+    }
+    if (root.detailsApp.id === app.id) {
+      retargetTimer.stop()
+      return
+    }
+    root.pendingApp = app
+    root.pendingCategory = String(categoryName || "")
+    root.pendingAnchorY = y
+    retargetTimer.restart()
+  }
+
+  function setDetails(app, categoryName, y) {
+    if (!root.detailsApp || root.detailsApp.id !== app.id) root.resetQuit()
+    root.detailsApp = app
+    root.detailsCategory = String(categoryName || "")
+    root.detailsAnchorY = y
+  }
+
+  function leaveDetailsFor(app) {
+    if (root.detailsShown && root.detailsApp && app && root.detailsApp.id === app.id) root.aimFrom = panel.pointer
+    if (root.pendingApp && app && root.pendingApp.id === app.id) {
+      retargetTimer.stop()
+      root.pendingApp = null
+    }
+    if (!root.detailsShown) detailsShowTimer.stop()
+    detailsHideTimer.restart()
+  }
+
+  function hideDetails() {
+    detailsShowTimer.stop()
+    detailsHideTimer.stop()
+    retargetTimer.stop()
+    root.pendingApp = null
+    root.detailsShown = false
+    root.detailsApp = null
+    root.resetQuit()
+  }
+
+  onPointerOnDetailsChanged: {
+    if (root.pointerOnDetails) {
+      detailsHideTimer.stop()
+      retargetTimer.stop()
+      root.pendingApp = null
+    } else if (root.detailsShown) {
+      detailsHideTimer.restart()
+    }
+  }
+
+  Timer {
+    id: detailsShowTimer
+    interval: root.detailsDelay
+    onTriggered: if (root.detailsApp) root.detailsShown = true
+  }
+
+  function aimingAtDetails(p) {
+    if (!root.detailsVisible || root.aimFrom.x < 0) return false
+    var nearX = details.onRight ? details.x : details.x + details.width
+    var ax = root.aimFrom.x, ay = root.aimFrom.y
+    var bx = nearX, by = details.y - Style.space(12)
+    var cx = nearX, cy = details.y + details.height + Style.space(12)
+    function side(x1, y1, x2, y2, x3, y3) { return (x1 - x3) * (y2 - y3) - (x2 - x3) * (y1 - y3) }
+    var d1 = side(p.x, p.y, ax, ay, bx, by)
+    var d2 = side(p.x, p.y, bx, by, cx, cy)
+    var d3 = side(p.x, p.y, cx, cy, ax, ay)
+    var neg = d1 < 0 || d2 < 0 || d3 < 0
+    var pos = d1 > 0 || d2 > 0 || d3 > 0
+    return !(neg && pos)
+  }
+
+  // Every pointer move inside the triangle holds a pending retarget off.
+  Connections {
+    target: panel
+    function onPointerChanged() {
+      if (root.pendingApp && root.aimingAtDetails(panel.pointer)) retargetTimer.restart()
+    }
+  }
+
+  Timer {
+    id: retargetTimer
+    interval: root.retargetDelay
+    onTriggered: {
+      if (!root.pendingApp) return
+      root.setDetails(root.pendingApp, root.pendingCategory, root.pendingAnchorY)
+      root.pendingApp = null
+    }
+  }
+
+  // Grace for crossing the gaps — between tiles, and from a tile to the card.
+  Timer {
+    id: detailsHideTimer
+    interval: 260
+    onTriggered: if (!root.pointerOnDetails) root.hideDetails()
+  }
+
+  // ----------------------------------------------------------------- monitor
+
+  ProcMonitor {
+    id: procMonitor
+    // Sampled in the background too, not only while the panel is open: the
+    // traffic totals only mean "since opening" if connections are seen while
+    // they are alive, and the sparkline has three minutes of history the
+    // moment the panel appears.
+    active: root.showMonitor
+  }
+
+  // Launcher id (or "class:<window class>" for anything else) -> the groups
+  // its windows live in.
+  readonly property var monitorApps: {
+    procMonitor.revision  // binding dependency
+    var ids = root.currentAppIds()
+    var wins = procMonitor.windows
+    var map = {}
+    for (var i = 0; i < wins.length; i++) {
+      var id = Match.resolve(wins[i].cls, ids, function(x) { return windowWatcher.entryFor(x) })
+      var key = id.length > 0 ? id : "class:" + wins[i].cls
+      // Not in the launcher: still worth a real name and icon in the list.
+      var other = id.length > 0 ? "" : root.installedIdForClass(wins[i].cls)
+      if (!map[key]) map[key] = { id: id, other: other, cls: wins[i].cls, groups: [] }
+      if (map[key].groups.indexOf(wins[i].group) === -1) map[key].groups.push(wins[i].group)
+    }
+    return map
+  }
+
+  // Window class -> an installed desktop id, for windows of applications that
+  // are not in the launcher. Same matching rules; remembered per class, since
+  // the installed set is large and a class does not change its answer.
+  // Mutated in place, never reassigned: it is read from inside the
+  // `monitorApps` binding, and a reassignment there would be a binding loop.
+  readonly property var classIdCache: ({})
+
+  function installedIdForClass(cls) {
+    var key = String(cls || "")
+    if (key.length === 0) return ""
+    if (root.classIdCache[key] !== undefined) return root.classIdCache[key]
+    var ids = root.installedEntries().map(function(e) { return e.id })
+    var id = Match.resolve(key, ids, function(x) { return windowWatcher.entryFor(x) })
+    root.classIdCache[key] = id
+    return id
+  }
+
+  function sumGroups(groups) {
+    var found = []
+    for (var i = 0; i < groups.length; i++) {
+      var g = procMonitor.groups[groups[i]]
+      if (g) found.push(g)
+    }
+    if (found.length === 0) return null
+
+    var out = { cpu: 0, mem: 0, rx: 0, tx: 0, since: 0, history: [], primed: true }
+    var longest = 0
+    for (var j = 0; j < found.length; j++) longest = Math.max(longest, (found[j].history || []).length)
+    for (var k = 0; k < longest; k++) out.history.push(0)
+
+    for (var n = 0; n < found.length; n++) {
+      var f = found[n]
+      out.cpu += f.cpu
+      out.mem += f.mem
+      out.rx += f.rx
+      out.tx += f.tx
+      out.since = out.since === 0 ? f.since : Math.min(out.since, f.since)
+      out.primed = out.primed && f.primed
+      // Histories are right-aligned: the newest samples line up.
+      var h = f.history || []
+      var offset = longest - h.length
+      for (var m = 0; m < h.length; m++) out.history[offset + m] += h[m]
+    }
+    return out
+  }
+
+  function statsFor(appId) {
+    procMonitor.revision  // binding dependency
+    var entry = root.monitorApps[appId]
+    return entry ? root.sumGroups(entry.groups) : null
+  }
+
+  function groupsFor(appId) {
+    var entry = root.monitorApps[appId]
+    return entry ? entry.groups.slice() : []
+  }
+
+  readonly property var monitorRows: {
+    var rows = []
+    for (var key in root.monitorApps) {
+      var entry = root.monitorApps[key]
+      var stats = root.sumGroups(entry.groups)
+      if (!stats) continue
+      var app = entry.id.length > 0 ? root.describe(entry.id) : null
+      var known = !app && entry.other.length > 0 ? root.describe(entry.other) : null
+      rows.push({
+        key: key,
+        app: app,
+        name: app ? app.name : (known ? known.name : entry.cls),
+        icon: app ? app.icon : (known ? known.icon : entry.cls.toLowerCase()),
+        stats: stats
+      })
+    }
+    rows.sort(function(a, b) { return (b.stats.cpu - a.stats.cpu) || (b.stats.mem - a.stats.mem) })
+    return rows
+  }
+
+  // Totals over groups, not rows: two applications sharing one scope are one
+  // cost, not two.
+  readonly property var monitorTotals: {
+    procMonitor.revision  // binding dependency
+    var cpu = 0, mem = 0
+    for (var g in procMonitor.groups) { cpu += procMonitor.groups[g].cpu; mem += procMonitor.groups[g].mem }
+    return { cpu: cpu, mem: mem }
+  }
+
+  readonly property real monitorMaxMem: {
+    var m = 1
+    for (var i = 0; i < root.monitorRows.length; i++) m = Math.max(m, root.monitorRows[i].stats.mem)
+    return m
+  }
+
+  readonly property bool monitorVisible: root.showMonitor && !root.editMode && root.filterText.length === 0
+    && root.monitorRows.length > 0
+
+  function formatBytes(n) {
+    var v = Number(n) || 0
+    if (v < 1024) return Math.round(v) + " B"
+    var units = ["KB", "MB", "GB", "TB"]
+    var i = -1
+    do { v /= 1024; i++ } while (v >= 1024 && i < units.length - 1)
+    return (v >= 100 ? Math.round(v) : v.toFixed(1)) + " " + units[i]
+  }
+
+  function formatPercent(n) {
+    var v = Number(n) || 0
+    return (v > 0 && v < 0.1 ? "<0.1" : (v >= 10 ? Math.round(v) : v.toFixed(1))) + "%"
+  }
+
+  // ---- force quit ------------------------------------------------------
+  //
+  // First click arms, second sends SIGTERM to the application's whole scope.
+  // If a window is still there three seconds later the button offers SIGKILL,
+  // which is what a truly hung application needs.
+
+  property string quitAppId: ""
+  property string quitState: ""
+
+  function resetQuit() {
+    quitArmTimer.stop()
+    quitCheckTimer.stop()
+    root.quitAppId = ""
+    root.quitState = ""
+  }
+
+  function quitClicked(app) {
+    if (!app || !app.id) return
+    var groups = root.groupsFor(app.id)
+    if (groups.length === 0) return
+    if (root.quitAppId !== app.id || root.quitState === "") {
+      root.quitAppId = app.id
+      root.quitState = "armed"
+      quitArmTimer.restart()
+      return
+    }
+    if (root.quitState === "armed" || root.quitState === "stubborn") {
+      var sig = root.quitState === "armed" ? "TERM" : "KILL"
+      quitArmTimer.stop()
+      for (var i = 0; i < groups.length; i++) procMonitor.signalGroup(groups[i], sig)
+      root.quitState = "ending"
+      quitCheckTimer.restart()
+    }
+  }
+
+  // An armed button that is not confirmed disarms itself.
+  Timer {
+    id: quitArmTimer
+    interval: 3500
+    onTriggered: if (root.quitState === "armed") root.resetQuit()
+  }
+
+  Timer {
+    id: quitCheckTimer
+    interval: 3000
+    onTriggered: {
+      root.toplevelRevision++
+      procMonitor.refresh()
+      if (root.windowsOf(root.quitAppId).length > 0) root.quitState = "stubborn"
+      else root.resetQuit()
+    }
   }
 
   FileView {
@@ -518,8 +917,11 @@ Panel {
   function beforeOpen() {
     root.filterText = ""
     root.pickerCategory = ""
-    root.paletteCategory = ""
     root.editMode = false
+    root.refreshClock()
+    root.toplevelRevision++
+    root.hideDetails()
+    procMonitor.refresh()
     root.selectedIndex = -1
     root.cursorActive = false
     root.pointerEngaged = false
@@ -564,18 +966,25 @@ Panel {
   onOpenedChanged: {
     if (root.opened) {
       button.hideOwnTooltip()
-      // The arcs sweep out on every open, not once per shell session.
-      chart.replay()
+      // The tiles cascade in on every open, not once per shell session.
+      root.revealToken++
       return
     }
     // Every close path lands here: the shortcut, Escape, a launch, the pointer
     // leaving, or another bar popup taking over.
-    root.hoverArmed = false
+    //
+    // Hover stays armed unless the pointer is on the icon right now. Only a
+    // close *under the pointer* — clicking the icon to dismiss — must wait for
+    // the pointer to leave before hover may reopen. Disarming on every close
+    // was the 1.x bug: after launching from the panel the pointer is not on
+    // the icon, so the re-arm that waited for it to leave the icon never came,
+    // and the next hover did nothing until the icon was clicked.
+    root.hoverArmed = !button.tooltipHovered
     root.keyboardMode = false
     root.editMode = false
     root.pickerCategory = ""
-    root.paletteCategory = ""
     root.filterText = ""
+    root.hideDetails()
     root.selectedIndex = -1
     root.cancelCategoryDrag()
     hoverOpenTimer.stop()
@@ -592,20 +1001,28 @@ Panel {
     function toggle(): void { root.toggleKeyboard() }
     // Straight into the editor, for a second keybinding.
     function edit(): void { root.openForKeyboard(); root.editMode = true }
+    // Launch the Nth "now" suggestion (1-based) without showing anything.
+    function launchSuggestion(n: int): void {
+      root.refreshClock()
+      var app = root.shownSuggestions[n - 1]
+      if (app) root.activateApp(app)
+    }
     function resetCounts(): void { root.resetUsage() }
   }
 
   // ------------------------------------------------------------------- hover
 
   readonly property bool pointerOnButton: button.tooltipHovered
-  readonly property bool pointerOnPanel: panel.hovered
+  // The details card counts as part of the panel: it carries a button, and
+  // moving onto it must not read as leaving.
+  readonly property bool pointerOnPanel: panel.hovered || root.pointerOnDetails
 
   // Read from the two sources rather than from a derived property: a binding
   // that depends on `pointerOnButton` is not guaranteed to have been
   // re-evaluated by the time this property's own change handler runs, and a
   // stale "the pointer is nowhere near" reading skips the open entirely.
   function pointerIsNear() {
-    return root.pointerOnButton || root.pointerOnPanel
+    return button.tooltipHovered || panel.hovered || (root.detailsVisible && details.hovered)
   }
 
   onPointerOnButtonChanged: {
@@ -663,15 +1080,16 @@ Panel {
     root.selectedIndex = Math.max(0, Math.min(count - 1, root.selectedIndex + step))
   }
 
-  function activateCursor() {
+  function activateCursor(fresh) {
     var current = root.flatApps[root.selectedIndex]
-    if (current) root.launchApp(current.app)
+    if (!current) return
+    if (fresh) root.launchNew(current.app)
+    else root.activateApp(current.app)
   }
 
   function handleKey(event) {
     if (event.key === Qt.Key_Escape) {
       if (root.pickerOpen) root.pickerCategory = ""
-      else if (root.paletteCategory.length > 0) root.paletteCategory = ""
       else if (root.editMode) root.editMode = false
       else if (root.filterText.length > 0) root.setFilter("")
       else root.close()
@@ -691,9 +1109,21 @@ Panel {
     if (event.key === Qt.Key_Down) { root.moveCursor(0, 1); event.accepted = true; return }
 
     if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-      root.activateCursor()
+      // Shift+Enter is the keyboard's middle-click: always a new window.
+      root.activateCursor((event.modifiers & Qt.ShiftModifier) !== 0)
       event.accepted = true
       return
+    }
+
+    // 1-9 launch the "now" row straight away — the one-keystroke path from
+    // the shortcut to the application you most likely want at this hour.
+    if (root.heroVisible && !root.editMode && event.key >= Qt.Key_1 && event.key <= Qt.Key_9) {
+      var pick = root.shownSuggestions[event.key - Qt.Key_1]
+      if (pick) {
+        root.activateApp(pick)
+        event.accepted = true
+        return
+      }
     }
 
     if (event.key === Qt.Key_Backspace) {
@@ -713,64 +1143,48 @@ Panel {
 
   function setFilter(value) {
     root.filterText = value
+    root.hideDetails()
     root.selectedIndex = root.filterText.length > 0 && root.flatApps.length > 0 ? 0 : -1
     root.cursorActive = root.selectedIndex >= 0
   }
 
   // ------------------------------------------------------------------ layout
 
-  readonly property int tileSpacing: Style.space(6)
-  readonly property int categoryPadding: Style.space(8)
+  readonly property int tileSpacing: Style.space(4)
   readonly property int minTileWidth: Math.max(root.iconSize + Style.space(18),
     root.showLabels ? Style.space(74) : root.iconSize + Style.space(18))
 
-  // The narrowest card that still fits `columns` tiles *inside* a category's
-  // padded block — otherwise the tint would quietly cost a column.
-  readonly property int gridWidth: root.columns * root.minTileWidth
-    + (root.columns - 1) * root.tileSpacing
-    + root.categoryPadding * 2
+  readonly property int gridWidth: root.columns * root.minTileWidth + (root.columns - 1) * root.tileSpacing
+  readonly property int cardWidth: Math.max(root.gridWidth, Style.space(300))
 
-  readonly property int cardWidth: Math.max(root.gridWidth, root.heroAvailable ? root.heroWidth : 0)
-
-  // The most-used strip sets a floor on the card's width, so the card is often
-  // wider than the grid strictly needs. Rather than leave that slack hanging
-  // off the right of every category, hand it to the tiles: `columns` still
-  // means columns, they are just roomier and their labels elide later.
+  // A card wider than the grid strictly needs (the floor above, or a narrow
+  // tile) hands the slack to the tiles: `columns` still means columns.
   readonly property int tileWidth: Math.max(root.minTileWidth,
-    Math.floor((panel.innerWidth - root.categoryPadding * 2 - (root.columns - 1) * root.tileSpacing) / root.columns))
+    Math.floor((panel.innerWidth - (root.columns - 1) * root.tileSpacing) / root.columns))
 
-  // ---- most-used strip -------------------------------------------------
+  // ---- now row ---------------------------------------------------------
 
-  // Whether the strip has anything to say at all. Kept separate from whether
-  // it is on screen right now, because the panel's width is derived from it
-  // and a card that changes width as you start typing is a card that jumps.
-  // Available as soon as there is anything in the launcher at all, not only
-  // once something has been launched: a strip that stays invisible until the
-  // counts fill up is a feature nobody discovers on the day they install it.
-  readonly property bool heroAvailable: root.showMostUsed && root.currentAppIds().length > 0
-  // Editing is about the categories, and a filtered grid is about one search —
-  // the ranking is noise in both.
+  // On as soon as there is anything in the launcher at all, not only once
+  // something has been launched: a row that stays invisible until the counts
+  // fill up is a feature nobody discovers on the day they install it.
+  readonly property bool heroAvailable: root.showSuggestions && root.currentAppIds().length > 0
+  // Editing is about the categories, and a search is about one answer — the
+  // suggestions are noise in both.
   readonly property bool heroVisible: root.heroAvailable && !root.editMode && root.filterText.length === 0
-  // Nothing has been launched from here yet.
-  readonly property bool heroIdle: root.topApps.length === 0
+  readonly property bool heroIdle: root.shownSuggestions.length === 0
+  // One row, never wrapped: the row is a glance, not a second grid.
+  readonly property var shownSuggestions: root.suggestions.slice(0, root.columns)
 
-  readonly property int heroIconSize: Math.max(Style.space(16), Math.min(Style.space(22), Math.round(root.iconSize * 0.62)))
-  readonly property int heroRowHeight: Math.max(root.heroIconSize, Style.font.body) + Style.space(4)
-  readonly property int heroRowsHeight: root.topApps.length > 0
-    ? root.topApps.length * root.heroRowHeight + (root.topApps.length - 1) * Style.space(2)
-    : 0
-  // Sized from `mostUsedCount` rather than from the rows actually present, so
-  // the chart is the same instrument whether it is idle, half full, or full,
-  // and the strip does not resize itself as the counts come in.
-  readonly property int chartBasis: root.mostUsedCount * root.heroRowHeight
-    + (root.mostUsedCount - 1) * Style.space(2) + Style.space(12)
-  readonly property int chartSize: root.showUsageChart
-    ? Math.max(Style.space(84), Math.min(Style.space(128), root.chartBasis))
-    : 0
-  readonly property int heroHeight: Math.max(root.chartSize, root.heroRowsHeight, Style.space(44))
-  // A ranking squeezed into a narrow panel is unreadable, and the chart wants
-  // room to be worth drawing, so the strip sets a floor on the card's width.
-  readonly property int heroWidth: Style.space(470)
+  // Bumped on every open; the tiles cascade in when it changes.
+  property int revealToken: 0
+
+  function categoryNameOf(appId) {
+    var categories = root.config.categories || []
+    for (var i = 0; i < categories.length; i++) {
+      if (categories[i].apps.indexOf(appId) !== -1) return categories[i].name
+    }
+    return ""
+  }
 
   // ------------------------------------------------------------------- edits
 
@@ -782,7 +1196,6 @@ Panel {
   function removeCategory(categoryId) { root.saveConfig(Model.removeCategory(root.config, categoryId)) }
   function moveCategory(categoryId, direction) { root.saveConfig(Model.moveCategory(root.config, categoryId, direction)) }
   function moveCategoryTo(categoryId, index) { root.saveConfig(Model.moveCategoryTo(root.config, categoryId, index)) }
-  function setCategoryColor(categoryId, color) { root.saveConfig(Model.setCategoryColor(root.config, categoryId, color)) }
 
   function appsIn(categoryId) {
     var index = Model.categoryIndex(root.config, categoryId)
@@ -892,6 +1305,8 @@ Panel {
     keyboardMode: root.keyboardMode
     focusTarget: keyCatcher
     surfaceOpacity: root.surfaceOpacity
+    extraInputItem: details
+    extraInputActive: root.detailsVisible
     contentWidth: panel.fittedContentWidth(root.cardWidth)
     contentHeight: panel.fittedContentHeight(root.pickerOpen ? Style.space(340) : body.implicitHeight)
 
@@ -906,8 +1321,6 @@ Panel {
       Keys.priority: Keys.BeforeItem
       Keys.onPressed: function(event) { root.handleKey(event) }
 
-      // ---- grid ------------------------------------------------------------
-
       Column {
         id: body
         visible: !root.pickerOpen
@@ -916,140 +1329,232 @@ Panel {
         anchors.top: parent.top
         spacing: Style.space(10)
 
+        // ---- header --------------------------------------------------------
+
         Item {
           width: parent.width
-          implicitHeight: Math.max(heading.implicitHeight, editButton.implicitHeight)
+          implicitHeight: Math.max(titleText.implicitHeight, editButton.implicitHeight)
 
-          Column {
-            id: heading
+          Text {
+            id: titleText
+            textFormat: Text.PlainText
+            text: root.editMode ? "Edit Quick Apps" : "Quick Apps"
+            color: root.panelForeground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.subtitle
+            font.bold: true
+            elide: Text.ElideRight
             anchors.left: parent.left
-            anchors.right: editButton.left
+            anchors.right: headerTools.left
             anchors.rightMargin: Style.space(8)
             anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.space(2)
-
-            Text {
-              textFormat: Text.PlainText
-              text: "Quick Apps"
-              color: root.panelForeground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.subtitle
-              font.bold: true
-              elide: Text.ElideRight
-              width: parent.width
-            }
-
-            Text {
-              visible: root.filterText.length > 0 || root.editMode
-              textFormat: Text.PlainText
-              text: root.filterText.length > 0
-                ? "Filter: " + root.filterText
-                : "Editing — drag a category by its handle to reorder"
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              elide: Text.ElideRight
-              width: parent.width
-            }
           }
 
-          Button {
-            id: editButton
-            text: root.editMode ? "Done" : "Edit"
-            foreground: root.panelForeground
-            fontFamily: root.fontFamily
-            fontSize: Style.font.caption
-            verticalPadding: Style.space(4)
-            horizontalPadding: Style.space(9)
-            selected: root.editMode
+          Row {
+            id: headerTools
+            spacing: Style.space(4)
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
-            onClicked: {
-              // Editing means typing, and typing means this surface has to own
-              // the keyboard even when the panel came up from a hover.
-              root.openForKeyboard()
-              root.editMode = !root.editMode
-              if (!root.editMode) {
-                root.pickerCategory = ""
-                root.paletteCategory = ""
+
+            // A hover-opened panel does not own the keyboard; this hands it
+            // over, so typing searches without reaching for the shortcut.
+            PanelActionButton {
+              visible: !root.keyboardMode && !root.editMode
+              iconText: ""
+              tooltipText: "Search"
+              foreground: root.panelForeground
+              fontFamily: root.fontFamily
+              fontSize: Style.font.bodySmall
+              size: Style.space(22)
+              anchors.verticalCenter: parent.verticalCenter
+              onClicked: root.openForKeyboard()
+            }
+
+            Button {
+              id: editButton
+              text: root.editMode ? "Done" : "Edit"
+              foreground: root.panelForeground
+              fontFamily: root.fontFamily
+              fontSize: Style.font.caption
+              verticalPadding: Style.space(4)
+              horizontalPadding: Style.space(9)
+              selected: root.editMode
+              anchors.verticalCenter: parent.verticalCenter
+              onClicked: {
+                // Editing means typing, and typing means this surface has to
+                // own the keyboard even when the panel came up from a hover.
+                root.openForKeyboard()
+                root.editMode = !root.editMode
+                if (!root.editMode) root.pickerCategory = ""
               }
             }
           }
         }
 
-        PanelSeparator { width: parent.width }
+        // ---- search line ---------------------------------------------------
+        //
+        // Present whenever typing would do something: the panel owns the
+        // keyboard, or a search is already running.
 
-        // ---- most used ------------------------------------------------------
-
-        Item {
-          id: hero
+        Rectangle {
+          id: searchLine
+          visible: !root.editMode && (root.keyboardMode || root.filterText.length > 0)
           width: parent.width
-          visible: root.heroVisible
-          height: root.heroVisible ? root.heroHeight : 0
+          height: Style.space(30)
+          radius: Style.cornerRadius
+          color: Util.alpha(root.panelForeground, Style.normalFillAlpha)
+          border.width: 1
+          border.color: root.filterText.length > 0 ? Util.alpha(root.accent, 0.6) : Util.alpha(root.panelForeground, 0.12)
 
-          // Before anything has been launched from here, say so rather than
-          // showing an empty box: the counter is the one feature of this panel
-          // that has nothing to show on its first day.
           Text {
-            visible: root.heroIdle
+            id: searchGlyph
             textFormat: Text.PlainText
-            wrapMode: Text.WordWrap
-            text: "Nothing opened from here yet. Launch something and your most used will rank itself, counting from the day each application joined its category."
-            color: root.dim
+            text: ""
+            color: root.filterText.length > 0 ? root.accent : root.dim
             font.family: root.fontFamily
-            font.pixelSize: Style.font.caption
+            font.pixelSize: Style.font.bodySmall
             anchors.left: parent.left
-            anchors.right: chart.left
-            anchors.rightMargin: root.showUsageChart ? Style.space(12) : 0
+            anchors.leftMargin: Style.space(10)
             anchors.verticalCenter: parent.verticalCenter
           }
 
-          Column {
-            id: heroRows
-            visible: !root.heroIdle
-            anchors.left: parent.left
-            anchors.right: chart.left
-            anchors.rightMargin: root.showUsageChart ? Style.space(10) : 0
+          Text {
+            id: queryText
+            textFormat: Text.PlainText
+            text: root.filterText.length > 0 ? root.filterText : "Search, or press 1–9 for a suggestion"
+            color: root.filterText.length > 0 ? root.panelForeground : root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.body
+            elide: Text.ElideLeft
+            anchors.left: searchGlyph.right
+            anchors.leftMargin: Style.space(8)
+            anchors.right: resultCount.left
+            anchors.rightMargin: Style.space(8)
             anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.space(2)
+          }
 
-            Repeater {
-              model: root.topApps
+          // Caret, after the typed text. Only while the keyboard is ours.
+          Rectangle {
+            visible: root.keyboardMode && root.filterText.length > 0
+            width: Math.max(1, Style.space(1))
+            height: queryText.font.pixelSize + Style.space(2)
+            color: root.accent
+            x: queryText.x + Math.min(queryText.contentWidth, queryText.width) + Style.space(1)
+            anchors.verticalCenter: parent.verticalCenter
 
-              delegate: UsageRow {
-                required property var modelData
-                required property int index
-
-                width: heroRows.width
-                rank: index + 1
-                label: modelData.name
-                iconUrl: root.iconFor(modelData.icon)
-                count: modelData.count
-                countIcon: root.countIcon
-                missing: modelData.missing
-                accent: modelData.color
-                foreground: root.panelForeground
-                fontFamily: root.fontFamily
-                iconSize: root.heroIconSize
-
-                onActivated: root.launchApp(modelData)
-              }
+            SequentialAnimation on opacity {
+              running: root.opened && root.keyboardMode
+              loops: Animation.Infinite
+              NumberAnimation { to: 0; duration: 530; easing.type: Easing.InOutQuad }
+              NumberAnimation { to: 1; duration: 530; easing.type: Easing.InOutQuad }
             }
           }
 
-          UsageChart {
-            id: chart
-            visible: root.showUsageChart && root.heroVisible
-            width: root.chartSize
-            height: root.chartSize
-            series: root.topApps
-            maxCount: root.maxUsage
-            total: root.usageTotal
-            placeholderRings: root.mostUsedCount
-            foreground: root.panelForeground
-            fontFamily: root.fontFamily
+          Text {
+            id: resultCount
+            visible: root.filterText.length > 0
+            textFormat: Text.PlainText
+            text: root.flatApps.length === 0 ? "none" : (root.flatApps.length === 1 ? "1 app" : root.flatApps.length + " apps")
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
             anchors.right: parent.right
+            anchors.rightMargin: Style.space(10)
             anchors.verticalCenter: parent.verticalCenter
+          }
+        }
+
+        Text {
+          visible: root.editMode
+          width: parent.width
+          textFormat: Text.PlainText
+          wrapMode: Text.WordWrap
+          text: "Drag a category by its handle to reorder it. Hover an app to remove it."
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+        }
+
+        // ---- now -----------------------------------------------------------
+
+        Column {
+          id: nowBlock
+          visible: root.heroVisible
+          width: parent.width
+          spacing: Style.space(4)
+
+          Row {
+            spacing: Style.space(6)
+
+            Text {
+              textFormat: Text.PlainText
+              text: "NOW"
+              color: root.accent
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              font.bold: true
+              font.letterSpacing: Style.space(1)
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              text: root.heroIdle ? "learns what you open, and when" : root.nowLabel
+              color: root.dim
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+          }
+
+          // Before anything has been opened there is nothing to suggest; say
+          // what will appear here instead of leaving an empty band.
+          Text {
+            visible: root.heroIdle
+            width: parent.width
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            text: "Open a few apps and the ones you reach for at this hour of the day will line up here."
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+
+          Row {
+            visible: !root.heroIdle
+            spacing: root.tileSpacing
+
+            Repeater {
+              model: root.shownSuggestions
+
+              delegate: AppTile {
+                id: nowTile
+                required property var modelData
+                required property int index
+
+                appId: modelData.id
+                label: modelData.name
+                iconUrl: root.iconFor(modelData.icon)
+                iconSize: root.iconSize
+                showLabel: root.showLabels
+                missing: modelData.missing
+                windows: root.windowCountOf(modelData.id)
+                hint: root.keyboardMode ? String(index + 1) : ""
+                accent: root.accent
+                foreground: root.panelForeground
+                fontFamily: root.fontFamily
+                width: root.tileWidth
+                revealOrder: index
+                revealToken: root.revealToken
+
+                onActivated: root.activateApp(modelData)
+                onNewInstanceRequested: root.launchNew(modelData)
+                onPointerEntered: {
+                  root.cursorActive = false
+                  root.selectedIndex = -1
+                  root.showDetailsFor(modelData, nowTile, root.categoryNameOf(modelData.id))
+                }
+                onPointerExited: root.leaveDetailsFor(modelData)
+              }
+            }
           }
         }
 
@@ -1057,6 +1562,8 @@ Panel {
           width: parent.width
           visible: root.heroVisible
         }
+
+        // ---- categories ----------------------------------------------------
 
         Flickable {
           width: parent.width
@@ -1068,11 +1575,15 @@ Panel {
           // geometry snapshot the drop point is computed from.
           interactive: contentHeight > height && !root.dragActive
           boundsBehavior: Flickable.StopAtBounds
+          onContentYChanged: root.hideDetails()
 
           Column {
             id: sectionsColumn
             width: parent.width
-            spacing: Style.space(6)
+            // Room for the edit-mode name field's frame, which the clip would
+            // otherwise shave off the first category.
+            topPadding: Style.space(2)
+            spacing: Style.space(10)
 
             Repeater {
               model: root.sections
@@ -1085,52 +1596,25 @@ Panel {
                 // Read by the drag snapshot walking this Column's children.
                 readonly property bool isCategorySection: true
                 readonly property int sectionIndex: section.index
-
-                readonly property bool first: section.index === 0
-                readonly property bool last: section.index === root.sections.length - 1
-                readonly property color accentColor: section.modelData.color
                 readonly property bool dragging: root.dragActive && root.dragCategoryId === section.modelData.id
-                readonly property bool paletteOpen: root.editMode && root.paletteCategory === section.modelData.id
 
                 width: sectionsColumn.width
-                height: sectionBody.implicitHeight + root.categoryPadding * 2
+                height: sectionBody.implicitHeight
                 visible: root.editMode || section.modelData.apps.length > 0
                 opacity: section.dragging ? 0.45 : 1
 
                 Behavior on opacity { NumberAnimation { duration: 110 } }
-
-                // The category's own colour, laid on thin. This is what makes
-                // the panel read as groups rather than as one long grid.
-                Rectangle {
-                  anchors.fill: parent
-                  radius: Style.cornerRadius > 0 ? Style.cornerRadius : Style.space(8)
-                  color: Qt.rgba(section.accentColor.r, section.accentColor.g, section.accentColor.b, root.categoryTint)
-
-                  Behavior on color { ColorAnimation { duration: 140 } }
-                }
-
-                // A firmer edge on the left, so the block has a spine to read
-                // the heading against even at a very low tint.
-                Rectangle {
-                  width: Math.max(2, Style.space(3))
-                  height: parent.height - root.categoryPadding
-                  radius: width / 2
-                  color: Qt.rgba(section.accentColor.r, section.accentColor.g, section.accentColor.b, 0.75)
-                  anchors.left: parent.left
-                  anchors.leftMargin: Style.space(2)
-                  anchors.verticalCenter: parent.verticalCenter
-                }
 
                 // Insertion line for a drag heading here.
                 Rectangle {
                   visible: root.dropIndicatorAt(section.sectionIndex)
                   height: Math.max(2, Style.space(2))
                   radius: height / 2
-                  color: Color.accent
+                  color: root.accent
                   anchors.left: parent.left
                   anchors.right: parent.right
                   anchors.top: parent.top
-                  anchors.topMargin: -Style.space(4)
+                  anchors.topMargin: -Style.space(6)
                 }
 
                 Column {
@@ -1138,18 +1622,14 @@ Panel {
                   anchors.left: parent.left
                   anchors.right: parent.right
                   anchors.top: parent.top
-                  anchors.leftMargin: root.categoryPadding
-                  anchors.rightMargin: root.categoryPadding
-                  anchors.topMargin: root.categoryPadding
                   spacing: Style.space(4)
 
                   Item {
                     width: parent.width
-                    implicitHeight: Math.max(sectionTitle.implicitHeight, sectionTools.implicitHeight, Style.space(20))
+                    implicitHeight: Math.max(sectionTitle.implicitHeight, sectionTools.implicitHeight, Style.space(18))
 
                     // Grab handle. Press and drag it to move the whole
-                    // category; the ‹ › buttons remain for one-step nudges and
-                    // for anyone who would rather not drag at all.
+                    // category.
                     Item {
                       id: dragGrip
                       visible: root.editMode
@@ -1187,34 +1667,11 @@ Panel {
                       }
                     }
 
-                    // Colour swatch: click it to unfold the palette below.
-                    Rectangle {
-                      id: swatch
-                      visible: root.editMode
-                      width: root.editMode ? Style.space(14) : 0
-                      height: Style.space(14)
-                      radius: width / 2
-                      color: section.accentColor
-                      border.width: section.paletteOpen ? 2 : 0
-                      border.color: root.panelForeground
-                      anchors.left: dragGrip.right
-                      anchors.leftMargin: root.editMode ? Style.space(6) : 0
-                      anchors.verticalCenter: parent.verticalCenter
-
-                      MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.paletteCategory = section.paletteOpen ? "" : section.modelData.id
-                      }
-                    }
-
                     PanelSectionHeader {
                       id: sectionTitle
                       visible: !root.editMode
                       text: section.modelData.name.toUpperCase()
-                      // Blended rather than the raw colour: a saturated hue at
-                      // heading weight is a lot of shouting for a launcher.
-                      foreground: Qt.tint(root.panelForeground, Qt.rgba(section.accentColor.r, section.accentColor.g, section.accentColor.b, 0.65))
+                      foreground: root.panelForeground
                       fontFamily: root.fontFamily
                       anchors.left: parent.left
                       anchors.verticalCenter: parent.verticalCenter
@@ -1227,9 +1684,9 @@ Panel {
                       foreground: root.panelForeground
                       verticalPadding: Style.space(3)
                       font.pixelSize: Style.font.bodySmall
-                      width: Math.max(Style.space(60), Math.min(Style.space(160),
-                        parent.width - swatch.x - swatch.width - sectionTools.width - Style.space(14)))
-                      anchors.left: swatch.right
+                      width: Math.max(Style.space(60), Math.min(Style.space(180),
+                        parent.width - dragGrip.width - sectionTools.width - Style.space(14)))
+                      anchors.left: dragGrip.right
                       anchors.leftMargin: Style.space(6)
                       anchors.verticalCenter: parent.verticalCenter
                       onEditingFinished: if (text !== section.modelData.name) root.renameCategory(section.modelData.id, text)
@@ -1253,28 +1710,6 @@ Panel {
                       }
 
                       PanelActionButton {
-                        iconText: "↑"
-                        tooltipText: "Move category up"
-                        enabled: !section.first
-                        foreground: root.panelForeground
-                        fontFamily: root.fontFamily
-                        fontSize: Style.font.bodySmall
-                        size: Style.space(20)
-                        onClicked: root.moveCategory(section.modelData.id, -1)
-                      }
-
-                      PanelActionButton {
-                        iconText: "↓"
-                        tooltipText: "Move category down"
-                        enabled: !section.last
-                        foreground: root.panelForeground
-                        fontFamily: root.fontFamily
-                        fontSize: Style.font.bodySmall
-                        size: Style.space(20)
-                        onClicked: root.moveCategory(section.modelData.id, 1)
-                      }
-
-                      PanelActionButton {
                         iconText: "✕"
                         tooltipText: "Delete category"
                         foreground: root.panelForeground
@@ -1283,77 +1718,6 @@ Panel {
                         fontSize: Style.font.bodySmall
                         size: Style.space(20)
                         onClicked: root.removeCategory(section.modelData.id)
-                      }
-                    }
-                  }
-
-                  // ---- palette ---------------------------------------------
-
-                  Flow {
-                    id: palette
-                    visible: section.paletteOpen
-                    width: parent.width
-                    spacing: Style.space(4)
-
-                    Repeater {
-                      model: Model.PALETTE
-
-                      delegate: Rectangle {
-                        required property var modelData
-
-                        readonly property bool current: Qt.colorEqual(section.accentColor, modelData)
-
-                        width: Style.space(15)
-                        height: Style.space(15)
-                        radius: width / 2
-                        color: modelData
-                        border.width: current ? 2 : 0
-                        border.color: root.panelForeground
-                        opacity: swatchMouse.containsMouse || current ? 1 : 0.72
-
-                        MouseArea {
-                          id: swatchMouse
-                          anchors.fill: parent
-                          hoverEnabled: true
-                          cursorShape: Qt.PointingHandCursor
-                          onClicked: {
-                            root.setCategoryColor(section.modelData.id, modelData)
-                            root.paletteCategory = ""
-                          }
-                        }
-                      }
-                    }
-
-                    // Back to following the palette by position, which is what
-                    // a category that has never been given a colour does.
-                    Rectangle {
-                      width: Style.space(15)
-                      height: Style.space(15)
-                      radius: width / 2
-                      color: "transparent"
-                      border.width: 1
-                      border.color: Qt.rgba(root.panelForeground.r, root.panelForeground.g, root.panelForeground.b, autoMouse.containsMouse ? 0.9 : 0.5)
-
-                      Text {
-                        anchors.centerIn: parent
-                        textFormat: Text.PlainText
-                        text: "A"
-                        color: root.panelForeground
-                        opacity: autoMouse.containsMouse ? 0.9 : 0.55
-                        font.family: root.fontFamily
-                        font.pixelSize: Math.max(7, Math.round(Style.font.caption * 0.85))
-                        font.bold: true
-                      }
-
-                      MouseArea {
-                        id: autoMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                          root.setCategoryColor(section.modelData.id, "")
-                          root.paletteCategory = ""
-                        }
                       }
                     }
                   }
@@ -1368,6 +1732,7 @@ Panel {
                       model: section.modelData.apps
 
                       delegate: AppTile {
+                        id: tile
                         required property var modelData
                         required property int index
 
@@ -1384,19 +1749,32 @@ Panel {
                         canMoveLeft: index > 0
                         canMoveRight: index < section.modelData.apps.length - 1
                         canReorder: !root.sortByUsage
-                        launchCount: root.launchCountOf(modelData.id)
-                        showCount: root.showLaunchCounts
-                        countIcon: root.countIcon
-                        accent: section.accentColor
+                        windows: root.windowCountOf(modelData.id)
+                        accent: root.accent
                         foreground: root.panelForeground
                         fontFamily: root.fontFamily
                         width: root.tileWidth
+                        revealOrder: flatIndex + (root.heroVisible ? root.shownSuggestions.length : 0)
+                        revealToken: root.revealToken
 
-                        onActivated: root.launchApp(modelData)
+                        readonly property string categoryName: section.modelData.id === "__results"
+                          ? root.categoryNameOf(modelData.id) : section.modelData.name
+
+                        onActivated: root.activateApp(modelData)
+                        onNewInstanceRequested: root.launchNew(modelData)
                         onPointerEntered: {
                           root.cursorActive = false
                           root.selectedIndex = -1
+                          root.showDetailsFor(modelData, tile, tile.categoryName)
                         }
+                        onPointerExited: root.leaveDetailsFor(modelData)
+                        // The keyboard cursor gets the details card too —
+                        // including a tile that is born selected, which is
+                        // every top search result as the query changes.
+                        onSelectedChanged: if (selected) root.showDetailsFor(modelData, tile, tile.categoryName)
+                        Component.onCompleted: if (selected) Qt.callLater(function() {
+                          if (tile.selected) root.showDetailsFor(tile.modelData, tile, tile.categoryName)
+                        })
                         onRemoveRequested: root.removeAppFrom(section.modelData.id, modelData.id)
                         onMoveRequested: function(direction) { root.moveAppIn(section.modelData.id, modelData.id, direction) }
                       }
@@ -1407,14 +1785,14 @@ Panel {
                     Item {
                       visible: root.editMode
                       width: root.tileWidth
-                      height: Style.space(8) + root.iconSize + (root.showLabels ? Style.space(4) + Math.ceil(Style.font.caption * 2.4) : 0) + Style.space(8)
+                      height: Style.space(8) + root.iconSize + Style.space(6) + (root.showLabels ? Math.ceil(Style.font.caption * 2.4) : 0) + Style.space(4)
 
                       Rectangle {
                         anchors.fill: parent
                         radius: Style.cornerRadius > 0 ? Style.cornerRadius : Style.space(6)
-                        color: addMouse.containsMouse ? Qt.rgba(section.accentColor.r, section.accentColor.g, section.accentColor.b, 0.18) : "transparent"
+                        color: addMouse.containsMouse ? Util.alpha(root.panelForeground, Style.hoverFillAlpha) : "transparent"
                         border.width: 1
-                        border.color: Qt.rgba(section.accentColor.r, section.accentColor.g, section.accentColor.b, 0.45)
+                        border.color: Util.alpha(root.panelForeground, addMouse.containsMouse ? 0.45 : 0.2)
                       }
 
                       Text {
@@ -1422,7 +1800,7 @@ Panel {
                         textFormat: Text.PlainText
                         text: "＋"
                         color: root.panelForeground
-                        opacity: 0.75
+                        opacity: 0.7
                         font.family: root.fontFamily
                         font.pixelSize: Style.font.iconLarge
                       }
@@ -1449,7 +1827,7 @@ Panel {
               Rectangle {
                 anchors.fill: parent
                 radius: height / 2
-                color: Color.accent
+                color: root.accent
               }
             }
 
@@ -1457,10 +1835,10 @@ Panel {
 
             Text {
               width: parent.width
-              visible: root.sections.length > 0 && root.flatApps.length === 0 && root.filterText.length > 0
+              visible: root.flatApps.length === 0 && root.filterText.length > 0
               textFormat: Text.PlainText
               wrapMode: Text.WordWrap
-              text: "Nothing matches “" + root.filterText + "”. Backspace to clear."
+              text: "Nothing installed matches “" + root.filterText + "”. Backspace to change it."
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall
@@ -1468,13 +1846,154 @@ Panel {
 
             Text {
               width: parent.width
-              visible: root.sections.length === 0
+              visible: root.filterText.length === 0 && root.sections.length === 0
               textFormat: Text.PlainText
               wrapMode: Text.WordWrap
               text: "No categories yet. Hit Edit, add one, then drop your apps into it."
               color: root.dim
               font.family: root.fontFamily
               font.pixelSize: Style.font.bodySmall
+            }
+          }
+        }
+
+        // ---- running -------------------------------------------------------
+        //
+        // What the open applications are costing: one line of totals, the
+        // CPU of all of them over the last three minutes, and the heaviest few
+        // by name. The bar beside each is its memory against the heaviest's.
+
+        PanelSeparator {
+          width: parent.width
+          visible: monitorBlock.visible
+        }
+
+        Column {
+          id: monitorBlock
+          visible: root.monitorVisible
+          width: parent.width
+          spacing: Style.space(6)
+
+          Item {
+            width: parent.width
+            implicitHeight: monitorTitle.implicitHeight
+
+            PanelSectionHeader {
+              id: monitorTitle
+              text: "RUNNING · " + root.monitorRows.length + (root.monitorRows.length === 1 ? " APP" : " APPS")
+              foreground: root.panelForeground
+              fontFamily: root.fontFamily
+              anchors.left: parent.left
+            }
+
+            Text {
+              textFormat: Text.PlainText
+              text: "CPU " + root.formatPercent(root.monitorTotals.cpu) + "   RAM " + root.formatBytes(root.monitorTotals.mem)
+              color: root.panelForeground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              font.bold: true
+              anchors.right: parent.right
+              anchors.verticalCenter: monitorTitle.verticalCenter
+            }
+          }
+
+          Sparkline {
+            width: parent.width
+            height: Style.space(34)
+            values: procMonitor.totalHistory
+            capacity: procMonitor.historyLength
+            color: root.accent
+          }
+
+          Repeater {
+            model: root.monitorRows.slice(0, 4)
+
+            delegate: Item {
+              id: monRow
+              required property var modelData
+              width: monitorBlock.width
+              height: Style.space(22)
+
+              readonly property bool hot: rowMouse.containsMouse
+
+              Rectangle {
+                anchors.fill: parent
+                anchors.leftMargin: -Style.space(4)
+                anchors.rightMargin: -Style.space(4)
+                radius: Style.cornerRadius
+                color: monRow.hot ? Util.alpha(root.panelForeground, Style.hoverFillAlpha) : "transparent"
+              }
+
+              Image {
+                id: monIcon
+                width: Style.space(16)
+                height: Style.space(16)
+                fillMode: Image.PreserveAspectFit
+                sourceSize.width: width * Screen.devicePixelRatio
+                sourceSize.height: height * Screen.devicePixelRatio
+                source: root.iconFor(monRow.modelData.icon)
+                asynchronous: true
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                text: monRow.modelData.name
+                color: root.panelForeground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                elide: Text.ElideRight
+                anchors.left: monIcon.right
+                anchors.leftMargin: Style.space(8)
+                anchors.right: memTrack.left
+                anchors.rightMargin: Style.space(8)
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Rectangle {
+                id: memTrack
+                width: Style.space(64)
+                height: Math.max(2, Style.space(3))
+                radius: height / 2
+                color: Util.alpha(root.panelForeground, 0.1)
+                anchors.right: monValue.left
+                anchors.rightMargin: Style.space(8)
+                anchors.verticalCenter: parent.verticalCenter
+
+                Rectangle {
+                  width: Math.max(parent.height, parent.width * Math.min(1, monRow.modelData.stats.mem / Math.max(1, root.monitorMaxMem)))
+                  height: parent.height
+                  radius: parent.radius
+                  color: root.accent
+
+                  Behavior on width { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+                }
+              }
+
+              Text {
+                id: monValue
+                width: Style.space(92)
+                horizontalAlignment: Text.AlignRight
+                textFormat: Text.PlainText
+                text: root.formatPercent(monRow.modelData.stats.cpu) + "  " + root.formatBytes(monRow.modelData.stats.mem)
+                color: root.dim
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              MouseArea {
+                id: rowMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: monRow.modelData.app ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onEntered: if (monRow.modelData.app) root.showDetailsFor(monRow.modelData.app, monRow, root.categoryNameOf(monRow.modelData.app.id))
+                onExited: if (monRow.modelData.app) root.leaveDetailsFor(monRow.modelData.app)
+                onClicked: if (monRow.modelData.app) root.activateApp(monRow.modelData.app)
+              }
             }
           }
         }
@@ -1531,6 +2050,53 @@ Panel {
     }
   }
 
+  // ----------------------------------------------------------- details card
+
+  // The last application the card was about. Kept after the card is told to
+  // go, so it fades out showing what it showed rather than blanking first.
+  property var detailsLastApp: null
+  onDetailsAppChanged: if (root.detailsApp) root.detailsLastApp = root.detailsApp
+
+  AppDetails {
+    id: details
+    parent: panel.overlayLayer
+
+    readonly property real gap: panel.gap
+    // Beside the panel, on whichever side has room; the right by preference.
+    readonly property bool onRight: panel.cardOrigin.x + panel.contentWidth + gap + width <= panel.screenW - panel.margin
+    readonly property var subject: root.detailsLastApp
+
+    visible: opacity > 0.01
+    opacity: root.detailsVisible ? 1 : 0
+    x: (onRight ? panel.cardOrigin.x + panel.contentWidth + gap : panel.cardOrigin.x - gap - width)
+      + (root.detailsVisible ? 0 : (onRight ? -Style.space(10) : Style.space(10)))
+    y: Math.round(Math.max(panel.margin, Math.min(panel.screenH - height - panel.margin, root.detailsAnchorY - height / 2)))
+
+    Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+    Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+    // Glides from tile to tile once it is up; appears in place when it is not.
+    Behavior on y { enabled: details.opacity > 0.9; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+
+    app: subject
+    iconUrl: subject ? root.iconFor(subject.icon) : ""
+    info: subject ? appInfo.infoFor(subject.id) : null
+    loading: subject !== null && !subject.missing
+    launchCount: subject ? Usage.countOf(root.usage, subject.id) : 0
+    lastLaunch: subject ? Usage.lastOf(root.usage, subject.id) : ""
+    windows: subject ? root.windowsOf(subject.id).length : 0
+    category: root.detailsCategory
+    focusRunning: root.focusRunning
+    stats: subject && root.showMonitor ? root.statsFor(subject.id) : null
+    sampleCapacity: procMonitor.historyLength
+    quitState: subject && root.quitAppId === subject.id ? root.quitState : ""
+    foreground: root.panelForeground
+    accent: root.accent
+    fontFamily: root.fontFamily
+    surfaceOpacity: root.surfaceOpacity
+
+    onQuitClicked: root.quitClicked(subject)
+  }
+
   readonly property string pickerCategoryName: {
     var index = Model.categoryIndex(root.config, root.pickerCategory)
     return index === -1 ? "" : root.config.categories[index].name
@@ -1539,12 +2105,14 @@ Panel {
   // A launcher that fills the screen is not a discreet launcher: the grid
   // scrolls past `maxHeight` instead of growing, and the screen's own room
   // caps it after that. `maxHeight` is the scrolling grid's own budget — the
-  // most-used strip sits above it and is charged to the screen, not to the
-  // setting, so turning the strip on does not silently shorten the grid.
+  // now row sits above it and is charged to the screen, not to the setting,
+  // so turning the row on does not silently shorten the grid.
   readonly property int maxBodyHeight: Math.max(Style.space(120),
     Math.min(root.maxHeight,
-      Math.round(panel.availableCardHeight - Style.space(110)
-        - (root.heroVisible ? root.heroHeight + Style.space(16) : 0))))
+      Math.round(panel.availableCardHeight - Style.space(120)
+        - (root.heroVisible ? nowBlock.implicitHeight + Style.space(20) : 0)
+        - (searchLine.visible ? searchLine.height + Style.space(10) : 0)
+        - (monitorBlock.visible ? monitorBlock.implicitHeight + Style.space(20) : 0))))
 
   onPickerOpenChanged: {
     if (root.pickerOpen) Qt.callLater(function() { if (root.pickerOpen) picker.focusSearch() })

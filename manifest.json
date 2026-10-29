@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "samara-hub-ro.quick-apps",
   "name": "Quick Apps",
-  "version": "1.5.0",
+  "version": "2.0.0",
   "author": "samara-hub-ro",
   "license": "MIT",
-  "description": "A discreet launcher in the Omarchy bar: your most-used applications, grouped into your own colour-coded categories, opening on hover — counting every time you open them, from the panel or from anywhere else.",
+  "description": "A quiet launcher in the Omarchy bar: your applications in your own categories, one hover away — drawn in your theme's two colours, with a row that learns what you open at each hour, one-click switching to what is already open, and a details card for every app.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "Quick Apps",
-    "description": "Your most-used applications by category, one hover away from the bar. Colour-coded groups you can drag into order, a launch count on every tile, and a ranking of your busiest applications on top.",
+    "description": "Your applications by category, one hover away from the bar. A \"now\" row that learns your daily rhythm, a marker on what is already open, fuzzy search across everything installed, and a details card with version, install and update dates.",
     "category": "System",
     "allowMultiple": false,
     "defaultSection": "center",
@@ -22,19 +22,21 @@
       "openOnHover": true,
       "hoverOpenDelay": 140,
       "hoverCloseDelay": 280,
-      "backgroundOpacity": 82,
       "iconSize": 30,
       "columns": 5,
       "showLabels": true,
       "maxHeight": 520,
-      "showMostUsed": true,
-      "mostUsedCount": 5,
-      "showUsageChart": true,
-      "showLaunchCounts": true,
-      "categoryTint": 30,
-      "icon": "",
+      "backgroundOpacity": 100,
+      "showSuggestions": true,
+      "suggestionCount": 5,
+      "showRunning": true,
+      "focusRunning": true,
+      "showDetails": true,
+      "detailsDelay": 450,
       "sortByUsage": true,
-      "countExternalLaunches": true
+      "countExternalLaunches": true,
+      "icon": "",
+      "showMonitor": true
     },
     "schema": [
       {
@@ -65,14 +67,14 @@
         "defaultValue": 280
       },
       {
-        "key": "backgroundOpacity",
+        "key": "columns",
         "type": "integer",
-        "label": "Background opacity (%)",
-        "description": "Opacity of the panel background. Lower is more see-through; pair it with a Hyprland blur layerrule for a frosted panel.",
-        "min": 10,
-        "max": 100,
-        "step": 2,
-        "defaultValue": 82
+        "label": "Columns",
+        "description": "How many applications sit side by side before the grid wraps. This is what sets the panel's width.",
+        "min": 2,
+        "max": 10,
+        "step": 1,
+        "defaultValue": 5
       },
       {
         "key": "iconSize",
@@ -85,26 +87,6 @@
         "defaultValue": 30
       },
       {
-        "key": "columns",
-        "type": "integer",
-        "label": "Columns",
-        "description": "How many applications sit side by side before the grid wraps. This is what sets the panel's width.",
-        "min": 2,
-        "max": 10,
-        "step": 1,
-        "defaultValue": 5
-      },
-      {
-        "key": "maxHeight",
-        "type": "integer",
-        "label": "Maximum height (px)",
-        "description": "How tall the scrolling grid is allowed to grow before it starts scrolling inside the panel. The most-used strip sits above it and is not charged against this.",
-        "min": 200,
-        "max": 1400,
-        "step": 20,
-        "defaultValue": 520
-      },
-      {
         "key": "showLabels",
         "type": "boolean",
         "label": "Show application names",
@@ -112,42 +94,79 @@
         "defaultValue": true
       },
       {
-        "key": "showMostUsed",
+        "key": "maxHeight",
+        "type": "integer",
+        "label": "Maximum height (px)",
+        "description": "How tall the category grid may grow before it scrolls inside the panel. The now row sits above it and is not charged against this.",
+        "min": 200,
+        "max": 1400,
+        "step": 20,
+        "defaultValue": 520
+      },
+      {
+        "key": "backgroundOpacity",
+        "type": "integer",
+        "label": "Background opacity (%)",
+        "description": "Opacity of the panel and its details card. 100 follows your theme exactly; lower is more see-through — pair it with a Hyprland blur layerrule for a frosted panel.",
+        "min": 10,
+        "max": 100,
+        "step": 2,
+        "defaultValue": 100
+      },
+      {
+        "key": "showSuggestions",
         "type": "boolean",
-        "label": "Show most used",
-        "description": "Put a ranking of your busiest applications at the top of the panel, above the categories. It is hidden while you are editing or filtering.",
+        "label": "Show the now row",
+        "description": "A row at the top with the applications you are most likely to want at this hour, learned from when you open them — on weekdays and weekends separately once there is enough history. Keys 1–9 launch them when the panel is opened from the keyboard.",
         "defaultValue": true
       },
       {
-        "key": "mostUsedCount",
+        "key": "suggestionCount",
         "type": "integer",
-        "label": "Most used entries",
-        "description": "How many applications the ranking lists — and how many orbits the chart beside it draws.",
+        "label": "Now row length",
+        "description": "How many applications the now row shows. It never wraps, so it is also capped by Columns.",
         "min": 1,
-        "max": 6,
+        "max": 8,
         "step": 1,
         "defaultValue": 5
       },
       {
-        "key": "showUsageChart",
+        "key": "showRunning",
         "type": "boolean",
-        "label": "Show the usage chart",
-        "description": "Draw the orbit chart beside the ranking: one arc per application, longest for the one you open most.",
+        "label": "Mark open applications",
+        "description": "Draw a short accent bar under an application that already has a window open — a dot for one window, a longer bar for several.",
         "defaultValue": true
       },
       {
-        "key": "showLaunchCounts",
+        "key": "focusRunning",
         "type": "boolean",
-        "label": "Show launch counts",
-        "description": "Print a small badge on each tile with the number of times that application has been opened from the launcher since you added it to a category.",
+        "label": "Switch to open windows",
+        "description": "Clicking an application that is already open switches to its window instead of starting another copy; with several windows, each click moves to the next. Middle-click or Shift+Enter always opens a new one.",
         "defaultValue": true
       },
       {
-        "key": "countExternalLaunches",
+        "key": "showMonitor",
         "type": "boolean",
-        "label": "Count launches from elsewhere",
-        "description": "Also count an application when it is opened from a keybinding, the Omarchy menu, a terminal or anything else, by watching for its window. Turn this off to count only what you launch from this panel.",
+        "label": "Show what open apps cost",
+        "description": "A small section at the bottom of the panel with the CPU and memory of open applications, a three-minute CPU line, and the heaviest few by name; the details card adds each one's CPU, memory, TCP traffic since it was first seen, and a Force quit button. Sampled every 3 seconds, in the background too, so traffic totals cover connections that open while the panel is shut.",
         "defaultValue": true
+      },
+      {
+        "key": "showDetails",
+        "type": "boolean",
+        "label": "Show the details card",
+        "description": "Resting the pointer on an application slides out a card beside the panel: version, when it was first installed and last updated, size, package, and how often you open it.",
+        "defaultValue": true
+      },
+      {
+        "key": "detailsDelay",
+        "type": "integer",
+        "label": "Details delay (ms)",
+        "description": "How long the pointer has to rest on an application before its details card appears. Once it is up, moving to another application updates it at once.",
+        "min": 0,
+        "max": 3000,
+        "step": 50,
+        "defaultValue": 450
       },
       {
         "key": "sortByUsage",
@@ -157,21 +176,11 @@
         "defaultValue": true
       },
       {
-        "key": "countIcon",
-        "type": "string",
-        "label": "Counter glyph",
-        "description": "Glyph shown next to a launch count. Any character your bar font carries.",
-        "defaultValue": ""
-      },
-      {
-        "key": "categoryTint",
-        "type": "integer",
-        "label": "Category tint (%)",
-        "description": "How strongly each category's colour washes its background. The default of 30 is 70% transparent — enough to group the tiles under it, far too faint to fight the icons. 0 turns the tint off.",
-        "min": 0,
-        "max": 70,
-        "step": 2,
-        "defaultValue": 30
+        "key": "countExternalLaunches",
+        "type": "boolean",
+        "label": "Count launches from elsewhere",
+        "description": "Also count an application when it is opened from a keybinding, the Omarchy menu, a terminal or anything else, by watching for its window. Turn this off to count only what you launch from this panel.",
+        "defaultValue": true
       },
       {
         "key": "seedOnFirstRun",

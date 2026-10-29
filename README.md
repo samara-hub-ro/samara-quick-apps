@@ -1,33 +1,49 @@
 # Quick Apps
 
-A discreet launcher in the Omarchy bar: the applications you actually use,
-grouped into your own categories, one hover away — no click, no window, no
-searching through a full application list.
+A quiet launcher in the Omarchy bar: the applications you actually use, in
+your own categories, one hover away. It draws in your theme's two colours and
+nothing else, learns which applications you reach for at each hour of the day,
+switches to what is already open instead of opening it twice, and tells you
+what any application is — version, install date, last update — when you rest
+the pointer on it.
 
-![Panel preview](preview.png)
+![Quick Apps panel with the details card for an open application](preview.png)
 
 ## What it does
 
-One small icon in the bar. Rest the pointer on it and a translucent panel drops
-down with your applications as icon tiles, under headings you name yourself
-("Internet", "Work", "Games" — whatever you keep going back to). Each category
-carries its own colour, laid on thin behind its tiles. Click a tile to launch,
-move the pointer away and the panel is gone.
+One small icon in the bar. Rest the pointer on it and a panel drops down with
+your applications as icon tiles, under headings you name yourself ("Browser",
+"Work", "Games" — whatever you keep going back to). Click a tile, and the panel
+is gone.
 
-On top sits **what you actually use**: the applications you open most, ranked,
-each with the number of times you have opened it, next to a chart of the same
-numbers. Every tile in the grid below carries that count too, as a small badge
-in its category's colour — and each category sorts itself so the things you
-reach for rise to the front of their group. The counting is not limited to this
-panel: opening something from a keybinding, the Omarchy menu or a terminal moves
-its counter just the same.
-
-The same panel opens from a keybinding, and that open is keyboard-driven: arrow
-keys move between tiles, typing filters them, Enter launches, Escape closes.
-
-The grid is edited in place — **Edit** turns on add, remove, rename, recolour
-and reorder right in the panel, so you never have to hand-write a config file to
-change what is in it (though you can; it is plain JSON).
+- **Two colours, both your theme's.** Text in the theme's popup colour, and the
+  accent for the few things that are live or chosen. Switch Omarchy themes and
+  the panel follows; nothing in it names a colour of its own.
+- **Now.** The row on top is not "most used ever" — it is what you are most
+  likely to want *at this hour*. Every launch is filed by hour of day and day
+  of week, so the browser you open at 9:00 and the music player you open at
+  20:00 each surface at their time. From the keyboard, `1`–`9` launch the row
+  without moving the cursor.
+- **Open is marked, and a click goes there.** An application that already has
+  a window carries a short accent bar under its icon — a dot for one window, a
+  longer bar for several. Clicking it switches to that window instead of
+  starting a second copy; with several windows, each click moves to the next.
+  Middle-click (or `Shift+Enter`) always opens a new one.
+- **Details on hover.** Rest on a tile and a card slides out beside the panel:
+  version, where it came from (pacman, Flatpak, web app, AppImage), when it was
+  first installed, when it was last updated, size, package, how often you open
+  it and when you last did.
+- **What open apps cost.** A small section at the bottom of the panel: total
+  CPU and memory of everything open, a three-minute CPU line, and the heaviest
+  applications by name. Each one's details card adds its own CPU, memory, TCP
+  traffic and CPU line — and a **Force quit** button for when it hangs.
+- **Search that finds what you meant.** Type to search, and the answer is first
+  where `Enter` takes it: `fir` → Firefox, `code` → Visual Studio Code, `vsc` →
+  Visual Studio Code by its initials, `obsd` → Obsidian. It reaches past your
+  categories into everything installed, so a search never dead-ends on an
+  application you have not filed yet.
+- **Edit in place.** **Edit** turns on add, remove, rename and drag-to-reorder
+  right in the panel; the file behind it is plain JSON if you would rather.
 
 ## Requirements
 
@@ -36,7 +52,9 @@ change what is in it (though you can; it is plain JSON).
 | **Omarchy** | 4.x (the Quickshell `omarchy-shell`) |
 | **Applications** | Anything with a `.desktop` entry — the panel reads the same application index as the Omarchy menu |
 
-No daemon, no extra packages, nothing to enable.
+No daemon, no extra packages, nothing to enable. The details card asks `pacman`
+(and `flatpak`, when an entry comes from it) for package facts, which are on
+every Omarchy system already.
 
 ## Install
 
@@ -87,28 +105,24 @@ snap it shut. A panel you are editing never closes on its own.
 
 **Panel**
 
-- **Click a tile** to launch it. The panel closes as it launches.
-- **Most used** sits above the categories: your busiest applications, ranked,
-  with their counts and a chart of the same numbers. The rows launch on click
-  like any tile. On a launcher nothing has been opened from yet it says so and
-  shows the chart idle. It is hidden while you are editing or filtering.
-- **Tiles sort themselves** inside each category, most-launched first. Turn it
-  off with `sortByUsage` to go back to the order you arranged.
-- **Edit** turns the grid into an editor: drag a category by the handle on its
-  left to move it, click its swatch to recolour it, rename it in place, `＋` add
-  an application to it, `↑ ↓` nudge it one step, `✕` delete it, and on each tile
-  `✕` removes it while `‹ ›` reorder it. **＋ Category** adds a new group.
-- Adding an application opens a searchable list of everything installed; the
-  ones already in that category are marked and inert, so you can add several in
-  a row without losing your place. **Esc** goes back.
+| Action | Result |
+|---|---|
+| Click a tile | Launch it — or, if it is already open, switch to its window |
+| Middle-click a tile | Always open a new window |
+| Rest on a tile | The details card slides out beside the panel |
+| Search icon (top right) | Hand the panel the keyboard, to search without the shortcut |
+| **Edit** | Add, remove, rename and reorder |
 
-**Keyboard**, once the panel is open from the keybinding (a hover or click open leaves the keyboard where it was; pressing **Edit** claims it too):
+**Keyboard**, once the panel is open from the keybinding (a hover open leaves
+the keyboard where it was; the search button or **Edit** claims it):
 
 | Key | Result |
 |---|---|
-| `←` `→` `↑` `↓` | Move between tiles |
-| `Enter` | Launch the selected application |
-| Any letter | Filter the grid; `Backspace` deletes, `Esc` clears |
+| `1`–`9` | Launch that application from the now row |
+| Any letter | Search everything installed; `Backspace` deletes, `Esc` clears |
+| `←` `→` `↑` `↓` | Move between tiles; the details card follows the cursor |
+| `Enter` | Launch the selected application, or switch to it if it is open |
+| `Shift+Enter` | Always open a new window |
 | `Tab` | Move to the neighbouring bar panel |
 | `Esc` | Close |
 
@@ -116,12 +130,137 @@ A pointer-opened panel deliberately does **not** take the keyboard, so passing
 the pointer over the bar never swallows a keystroke from whatever you were
 typing in.
 
+![Search: ranked results across everything installed, with the top result's details](screenshots/search.png)
+
+**Editing.** Hit **Edit** and every category grows a handle on its left — press
+it and drag; an insertion line shows where it will land, and the move is
+committed when you let go. Rename a category in place, `＋` adds an application
+to it, `✕` deletes it; on each tile `✕` removes it and, with the usage sort
+off, `‹ ›` reorder it. **＋ Category** adds a group. Adding an application opens
+a searchable list of everything installed; the ones already in that category
+are marked and inert, so you can add several in a row.
+
+![Edit mode](screenshots/edit.png)
+
+## Now: the rhythm row
+
+Every launch lands in two small histograms per application — one by hour of
+day, one by day of week. When the panel opens, each application is scored for
+*this moment*: the hour histogram is read through a soft window two or three
+hours wide (so a habit at 9:00 still counts at 8:50), scaled by how much
+today's weekday favours that application once there are at least a week's
+worth of launches, plus a small share of the all-time count as a tie-breaker.
+
+That last part is also what fills the row on day one, and on an upgrade from
+1.x — counts carried over from before still rank, and the rhythm sharpens from
+there. Switching to an application that is already open is not a launch, and
+does not move its count, but it does teach the rhythm: "I wanted this, now" is
+exactly what the row is for.
+
+The row never wraps (it is capped by `columns`), and it hides while you edit or
+search. `suggestionCount` sets its length; `showSuggestions` turns it off.
+
+There is also an IPC call to launch from it without opening anything, which
+makes "the app I want right now" a single keybinding:
+
+```bash
+omarchy-shell samara-hub-ro.quick-apps launchSuggestion 1
+```
+
+## The details card
+
+Resting on a tile for `detailsDelay` (450 ms) slides the card out beside the
+panel, on whichever side has room. Once it is up, moving to another tile
+retargets it at once. The keyboard cursor gets it too.
+
+| Row | Where it comes from |
+|---|---|
+| Version | `pacman -Qi` (package release suffix trimmed), or `flatpak info` |
+| Installed | The first `installed` line for that package in `/var/log/pacman.log`; for a local entry, when the `.desktop` file arrived |
+| Updated | pacman's *Install Date* — when the version on disk went in; for a local entry, the file's last change |
+| Size, Package | `pacman -Qi` |
+| Opens | For an Omarchy web app, the address it opens |
+| Opened | This launcher's own count and last launch |
+| In | The category it is filed under |
+
+An entry in `~/.local/share/applications` that overrides or wraps a packaged
+program (a hand-tuned `.desktop` for Kate, say) is traced to the package that
+owns the binary in its `Exec` line, so it still shows a real version. Rows with
+nothing to say are left out rather than shown as a dash.
+
+The lookup is `appinfo.sh`, run once per application per shell session, one at
+a time, under a timeout, with a clean environment; the desktop id is passed as
+an argument and only ever used as a file name inside the XDG application
+directories. Turn the card off with `showDetails`.
+
+## What open apps cost
+
+The **Running** section at the bottom of the panel shows, for everything that
+has a window open:
+
+![The Running section: totals, a three-minute CPU line, and the heaviest apps](screenshots/running.png)
+
+- **Totals** — CPU and memory of all of them together.
+- **A CPU line** over the last three minutes, one sample every 3 seconds.
+- **The heaviest few** by name, CPU first, with a bar for each one's memory
+  against the largest. Hover one of your own applications for its details
+  card; click it to switch to it.
+
+Numbers are per **application**, not per process. Omarchy starts every
+application in its own systemd scope, and the monitor reads that scope's
+cgroup counters — so a browser's memory is the browser with every renderer and
+helper process, which is the number that actually matters. A window whose
+process is not in an application scope is measured from that one process.
+CPU is a share of the whole machine: 100% means every core busy.
+
+In the details card of an open application:
+
+| Row | What it is |
+|---|---|
+| CPU, Memory | Its share right now, as above |
+| Network | Bytes received ↓ and sent ↑ over **TCP** since the monitor first saw it |
+| CPU line | Its own last three minutes |
+
+**About the network figure.** Linux gives an unprivileged user per-socket byte
+counters for TCP only. UDP — and with it QUIC, which browsers use for much of
+their traffic (YouTube, Google services, many CDNs) — has none without root, so
+it is not in the number, and the card says so. A browser can show close to
+zero while streaming video. The count covers every TCP connection the monitor
+saw alive, in full, including ones opened before it started; a connection that
+opens and closes between two samples is missed. It is a floor, not a meter.
+
+Sampling continues in the background while the panel is shut, so connections
+are seen while they are alive. One sample is a `hyprctl clients`, a read of a
+few cgroup files and an `ss -tinp` — about 50 ms of work every 3 seconds. Turn
+all of it off with `showMonitor`.
+
+### Force quit
+
+<img src="screenshots/force-quit.png" alt="Force quit, armed" width="295" align="right">
+
+The card of an open application ends with **Force quit**. It takes two clicks:
+the first arms it (it turns solid and says *Click again to end it*, and
+disarms itself after a few seconds), the second sends **SIGTERM** to every
+process in the application's scope, so it can still save and exit cleanly. If
+a window is still there three seconds later — a truly hung application — the
+button offers **SIGKILL**, which goes through the scope's `cgroup.kill` and
+takes the whole tree at once.
+
+`killapp.sh` checks its target itself rather than trusting the panel: only a
+scope under your own `app.slice`, or a single process you own. Hyprland and the
+shell live in `session.slice`, so there is no value that can take the desktop
+down with the application.
+
+To reach the button, move onto the card: while the pointer is travelling from
+its tile toward the card, the card does not jump to the other tiles it passes
+(the "safe triangle" of nested menus). Resting on another tile does move it.
+
 ## Counting what you open
 
 Every application in the launcher carries a count of how many times you have
-opened it, shown as a small badge on its tile and spelled out in the ranking on
-top. Opening it from the panel counts; so does opening it from a keybinding, the
-Omarchy menu, a terminal or any other launcher.
+opened it — shown in its details card, and behind the now row and the usage
+sort. Opening it from the panel counts; so does opening it from a keybinding,
+the Omarchy menu, a terminal or any other launcher.
 
 The counter is worth being precise about, because it is exact in some places and
 an inference in others:
@@ -132,9 +271,9 @@ an inference in others:
 - Taking an application out of a category **forgets its count**. Put it back and
   it starts from zero, because by the rule above that is what its count now
   means.
-- A launch **from the panel** — a tile clicked, a ranking row clicked, `Enter`
-  on the keyboard cursor — is counted directly and exactly once. This is the
-  part that is certain.
+- A launch **from the panel** — a tile clicked, a now-row key, `Enter` on the
+  keyboard cursor — is counted directly and exactly once. This is the part that
+  is certain. Switching to a window that is already open is not a launch.
 - A launch **from anywhere else** is inferred from a window appearing, because
   nothing on the system announces that an application was started. That
   inference is good but not perfect:
@@ -151,8 +290,9 @@ an inference in others:
   - Windows already open when the shell starts are **not** launches.
 - Set `countExternalLaunches` to `false` to go back to counting only what you
   launch from the panel.
-- **Counters start at zero** on a fresh install and on an upgrade — there has
-  never been anything to carry over.
+
+The same window-class rules decide which applications are marked as open — and
+refuse to mark one when a window could belong to two.
 
 Counts live in `~/.config/omarchy/quick-apps-usage.json`, beside the categories
 rather than inside them: they change on every launch, and rewriting the file you
@@ -162,23 +302,25 @@ hand-edit once per launch is a good way to lose a hand edit.
 {
   "version": 1,
   "apps": {
-    "brave-browser": { "count": 18, "since": "2026-09-03T09:22:31.778Z", "last": "2026-09-03T11:04:02.331Z" }
+    "brave-browser": {
+      "count": 18,
+      "since": "2026-09-03T09:22:31.778Z",
+      "last": "2026-10-29T09:04:02.331Z",
+      "hours": [0,0,0,0,0,0,0,1,4,6,3,1,0,0,1,1,0,0,0,1,0,0,0,0],
+      "days": [1,4,3,3,4,3,0]
+    }
   }
 }
 ```
+
+`hours` is local hour 0–23, `days` is Sunday first. A file written by 1.x has
+neither; they start at zero and fill from the first launch.
 
 To wipe the slate without touching your categories:
 
 ```bash
 omarchy-shell samara-hub-ro.quick-apps resetCounts
 ```
-
-Turn the badges off with `showLaunchCounts`, the ranking with `showMostUsed`,
-and the chart alone with `showUsageChart`. The file is still kept either way.
-
-An application that has never been opened from here shows `0` rather than no
-badge at all — a counter that only appears once you have used it is a counter
-nobody finds on the day they install the plugin.
 
 ### Sorting by what you use
 
@@ -191,18 +333,6 @@ While the sort is on, the per-tile `‹ ›` buttons are hidden. The order is
 derived at that point, so a move button could only lie about what it does —
 turn the sort off if you want to arrange tiles by hand.
 
-### The chart
-
-The ranking sits next to a small instrument: one glowing arc per application,
-each on its own orbit, its length that application's share of the busiest one's
-count — outermost ring is the one you open most — inside a frame carrying the
-total.
-
-It is deliberately not a bar chart, a pie or a donut. Those spend their ink on
-comparing every slice against every other, which is not the question here: the
-rows beside it already carry the exact numbers, so what is left for the chart is
-the shape of the habit at a glance.
-
 ## The bar mark
 
 The icon in the bar is a downward-pointing triangle with an S cut out of it —
@@ -210,41 +340,25 @@ the triangle for the panel it drops, the S for samara. It is painted rather
 than shipped as an image, so it takes the bar's own colour and its active tint,
 and stays crisp at whatever height your bar happens to be.
 
-To use a glyph instead, put one in `icon`; the old default was `󰀻`. An
-empty `icon` means the drawn mark.
+To use a glyph instead, put one in `icon`. An empty `icon` means the drawn mark.
 
 ## Colours
 
-Every category washes its own background in its own colour. The default is 30%
-opacity — **70% transparent** — which is enough to group the tiles under it and
-far too faint to fight the icons. That colour also tints the category's heading,
-its tile highlights, its launch badges and its arc in the chart, so a tile reads
-as belonging to its group from any of them.
+There are two, and both come from the active Omarchy theme:
 
-Categories that have never been given a colour follow a built-in palette by
-position, so a fresh install is colour-coded without anyone configuring
-anything. To choose one, hit **Edit** and click the swatch beside a category's
-name: the palette unfolds under the heading, and the hollow `A` puts that
-category back on automatic.
+- **Popup text** (`Color.popups.text`) for everything at rest — names, headings
+  (dimmed), icons' surroundings, hover fills (a thin wash of the same colour).
+- **Accent** (`Color.accent`) for what is live or chosen, and nothing else: the
+  open-window marker, the keyboard cursor, the search caret, the `NOW` label,
+  the version in the details card, the drag insertion line.
 
-Chosen colours are stored per category in `quick-apps.json`, as a hex string:
+The panel background and border are the theme's popup surface, exactly as the
+first-party panels draw them. Change theme and every one of these follows
+immediately — there is no colour setting, because there is nothing to set.
 
-```json
-{ "id": "work", "name": "Work", "color": "#a78bfa", "apps": ["obsidian", "slack"] }
-```
-
-Anything that is not a `#rgb` or `#rrggbb` string — including no key at all — is
-read as "follow the palette". `categoryTint` sets how strongly the wash lands;
-`0` turns it off and leaves the rest of the colour coding in place.
-
-## Reordering categories
-
-Hit **Edit** and every category grows a handle on its left. Press it and drag:
-an insertion line shows where the category will land, and the move is committed
-when you let go — nothing shifts under the pointer mid-drag. The `↑ ↓` buttons
-beside each name are still there for a one-step nudge, and the order in
-`quick-apps.json` is the order in the panel, so you can also just rearrange the
-file.
+Categories used to carry their own colours in 1.x. A `color` already in
+`quick-apps.json` is kept in the file untouched, so going back to 1.x loses
+nothing, but 2.0 does not draw it.
 
 ## A keybinding
 
@@ -252,16 +366,12 @@ Nothing is bound by default — pick a free key in `~/.config/hypr/bindings.lua`
 
 ```lua
 o.bind("SUPER + A", "Quick Apps", "omarchy-shell samara-hub-ro.quick-apps toggle")
+o.bind("SUPER + SHIFT + A", "Quick Apps: now", "omarchy-shell samara-hub-ro.quick-apps launchSuggestion 1")
 ```
 
-`toggle`, `open`, `close`, `show`, `hide`, `edit` and `resetCounts` are all
-accepted — `edit` opens straight into the editor, which is worth a second
-binding if you rearrange often:
-
-```bash
-omarchy-shell samara-hub-ro.quick-apps toggle
-omarchy-shell samara-hub-ro.quick-apps edit
-```
+`toggle`, `open`, `close`, `show`, `hide`, `edit`, `launchSuggestion <n>` and
+`resetCounts` are all accepted — `edit` opens straight into the editor, which
+is worth a binding if you rearrange often.
 
 On a multi-monitor setup the widget exists once per bar, and IPC reaches the
 first one that registered — the same way Omarchy's own panels behave.
@@ -276,22 +386,27 @@ plugin settings UI, which builds a form from the manifest schema.
 | `openOnHover` | boolean | `true` | Open the panel when the pointer rests on the icon |
 | `hoverOpenDelay` | integer (ms) | `140` | How long the pointer has to stay before it opens |
 | `hoverCloseDelay` | integer (ms) | `280` | Grace period after the pointer leaves both icon and panel |
-| `backgroundOpacity` | integer (%) | `82` | Opacity of the panel background |
-| `iconSize` | integer (px) | `30` | Size of each application icon |
 | `columns` | integer | `5` | Tiles per row — this is what sets the panel's width |
-| `maxHeight` | integer (px) | `520` | Height at which the scrolling grid starts scrolling instead of growing. The most-used strip sits above it and is not charged against this |
+| `iconSize` | integer (px) | `30` | Size of each application icon |
 | `showLabels` | boolean | `true` | Print application names under the icons |
-| `showMostUsed` | boolean | `true` | Rank your busiest applications above the categories |
-| `mostUsedCount` | integer | `5` | How many the ranking lists, and how many orbits the chart draws (1–6) |
-| `showUsageChart` | boolean | `true` | Draw the chart beside the ranking |
-| `showLaunchCounts` | boolean | `true` | Print the launch-count badge on each tile |
-| `countExternalLaunches` | boolean | `true` | Also count applications opened from a keybinding, the Omarchy menu or a terminal |
+| `maxHeight` | integer (px) | `520` | Height at which the category grid starts scrolling instead of growing. The now row sits above it and is not charged against this |
+| `backgroundOpacity` | integer (%) | `100` | Opacity of the panel and details card. `100` is your theme exactly |
+| `showSuggestions` | boolean | `true` | Show the now row |
+| `suggestionCount` | integer | `5` | How many applications the now row shows (1–8, and never more than `columns`) |
+| `showRunning` | boolean | `true` | Mark applications that already have a window open |
+| `focusRunning` | boolean | `true` | Clicking an open application switches to it instead of opening another |
+| `showMonitor` | boolean | `true` | The Running section, the live rows and Force quit in the details card, and the background sampling behind them |
+| `showDetails` | boolean | `true` | Show the details card on hover |
+| `detailsDelay` | integer (ms) | `450` | How long to rest on a tile before its details card appears |
 | `sortByUsage` | boolean | `true` | Order the tiles in each category most-launched first |
-| `countIcon` | string | `` | Glyph shown next to a launch count |
-| `categoryTint` | integer (%) | `30` | How strongly a category's colour washes its background; `30` is 70% transparent, `0` is off |
+| `countExternalLaunches` | boolean | `true` | Also count applications opened from a keybinding, the Omarchy menu or a terminal |
 | `seedOnFirstRun` | boolean | `true` | Fill the categories from installed applications the first time |
 | `icon` | string | *(empty)* | Glyph shown in the bar; empty means the drawn mark |
 | `configPath` | string | *(empty)* | Name of the categories file **inside `~/.config/omarchy/`** — `work.json`, say. Empty means `quick-apps.json`. Anything that is not a plain `.json` name in that directory is ignored and the default is used |
+
+Settings removed in 2.0 — `showMostUsed`, `mostUsedCount`, `showUsageChart`,
+`showLaunchCounts`, `countIcon`, `categoryTint` — are simply ignored if they are
+still in `shell.json`.
 
 Both files stay inside `~/.config/omarchy/`. `configPath` names one of them; it
 does not point anywhere, so there is no path for a stray value to escape down
@@ -302,10 +417,9 @@ and no way for the counts to be written over the categories.
   "id": "samara-hub-ro.quick-apps",
   "columns": 6,
   "iconSize": 40,
-  "backgroundOpacity": 65,
   "showLabels": false,
-  "mostUsedCount": 3,
-  "categoryTint": 22
+  "suggestionCount": 6,
+  "detailsDelay": 250
 }
 ```
 
@@ -326,7 +440,7 @@ tile. They live in `~/.config/omarchy/quick-apps.json`:
 ```
 
 `apps` holds desktop-entry ids — the `.desktop` filename without its extension.
-`color` is optional; an empty or missing one follows the palette by position.
+`color` is a 1.x leftover — kept in the file if it is there, not drawn by 2.0.
 The order of the list is the order you arranged, which is what the panel shows
 with `sortByUsage` off — with it on, the panel sorts that list by launch count
 for display without touching the file.
@@ -469,7 +583,14 @@ once the button comes back up.
 **Launching** goes through the shell's own application library when the running
 bar exposes it, so it gets the same icon resolution and the same launch feedback
 as the Omarchy menu, and falls back to the desktop entry's own launch path
-otherwise.
+otherwise. **Switching** to an open application goes through the Wayland
+foreign-toplevel `activate` request, which Hyprland answers by focusing the
+window and moving to its workspace.
+
+**The details card** lives on the same layer surface as the panel. While it is
+up, the surface's input region is the panel card *and* the details card, so
+the pointer can move onto it and press Force quit without the panel reading
+that as leaving.
 
 ## Troubleshooting
 
@@ -485,14 +606,38 @@ opens it regardless.
 `omarchy-shell samara-hub-ro.quick-apps toggle`. If that works, the binding is
 the problem — `omarchy menu keybindings --print` shows what is registered.
 
-**Typing does not filter.** Type-to-filter only works on a panel that owns the
-keyboard, which means one opened from the keybinding — a hover or click open
-deliberately leaves the keyboard alone.
+**Typing does not search.** Typing only reaches a panel that owns the keyboard:
+one opened from the keybinding, or one handed the keyboard with the search
+button in its header. A hover or click open deliberately leaves the keyboard
+alone.
 
-**Every count is zero and the ranking says nothing has been opened.** That is
-the honest starting state — counts begin at zero on a fresh install, on an
-upgrade, and for any application the moment you add it to a category. Open a few
-things and the ranking, the chart and the sort all fill in.
+**After launching something, hovering the icon did nothing until I clicked
+(1.x).** Fixed in 2.0. Every close used to disarm hover until the pointer left
+the icon — but after a launch from the panel the pointer was never on the icon,
+so the re-arm never came. Hover now stays armed unless the panel was closed
+with the pointer on the icon itself.
+
+**The details card shows no version.** The entry is not owned by a package and
+its `Exec` line does not start a packaged binary — an AppImage, a web app, a
+hand-made launcher. The card shows what it can find (where it came from, when
+the entry arrived) and leaves the rest out. Run the lookup by hand to see what
+it sees: `bash ~/.config/omarchy/plugins/samara-hub-ro.quick-apps/appinfo.sh -- <desktop-id>`.
+
+**The network figure is zero for my browser.** It is TCP only; most of a
+browser's traffic is likely QUIC over UDP, which has no per-process counters
+without root. See *What open apps cost*.
+
+**Force quit is not in the card.** It appears only for an application with a
+window open, and only once the monitor has sampled it (within 3 seconds of
+opening the panel) — and not at all with `showMonitor` off.
+
+**Clicking an open application starts a new copy anyway.** Its window was not
+recognised as belonging to it (see the counting rules above — the same matching
+decides what counts as open), or `focusRunning` is off.
+
+**The now row says it is still learning.** That is the honest starting state —
+counts begin at zero on a fresh install and for any application the moment you
+add it to a category. Open a few things and the row and the sort fill in.
 
 **One application never counts, however often I open it.** Its window class does
 not match its desktop entry closely enough for the plugin to be sure, or it
@@ -509,9 +654,6 @@ application that reuses a window it already has will not move its counter.
 **A count went back to zero on its own.** The application left its category at
 some point — removed by hand, or by an edit to `quick-apps.json` — and the count
 went with it, by design. Re-adding starts a new one.
-
-**The counter glyph is a box.** Your bar font has no glyph at that code point.
-Set `countIcon` to any character it does carry, or an empty string.
 
 **The tiles are not in the order I put them in.** `sortByUsage` is on by
 default: each category orders itself most-launched first. Turn it off and your

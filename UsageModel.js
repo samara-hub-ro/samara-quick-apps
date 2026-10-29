@@ -54,12 +54,29 @@ function normalizeCount(value) {
   return count
 }
 
+// A fixed-length array of counts: the hour-of-day and day-of-week histograms
+// the "now" suggestions are read from. Anything else — missing, the wrong
+// length, junk in a slot — becomes zeros of the right length, so a file
+// written by 1.x simply starts its rhythm from today.
+function normalizeBuckets(value, length) {
+  var out = []
+  var list = Array.isArray(value) && value.length === length ? value : null
+  for (var i = 0; i < length; i++) out.push(list ? normalizeCount(list[i]) : 0)
+  return out
+}
+
+function freshEntry(nowIso) {
+  return { count: 0, since: String(nowIso || ""), last: "", hours: normalizeBuckets(null, 24), days: normalizeBuckets(null, 7) }
+}
+
 function normalizeEntry(raw, nowIso) {
   var entry = (raw && typeof raw === "object") ? raw : {}
   return {
     count: normalizeCount(entry.count),
     since: clampText(entry.since, LIMITS.stampChars) || clampText(nowIso, LIMITS.stampChars),
-    last: clampText(entry.last, LIMITS.stampChars)
+    last: clampText(entry.last, LIMITS.stampChars),
+    hours: normalizeBuckets(entry.hours, 24),
+    days: normalizeBuckets(entry.days, 7)
   }
 }
 
@@ -112,7 +129,7 @@ function sync(usage, ids, nowIso) {
     if (id.length === 0) continue
     wanted[id] = true
     if (!next.apps[id]) {
-      next.apps[id] = { count: 0, since: String(nowIso || ""), last: "" }
+      next.apps[id] = freshEntry(nowIso)
       changed = true
     }
   }
@@ -126,14 +143,37 @@ function sync(usage, ids, nowIso) {
   return changed ? next : null
 }
 
-function record(usage, appId, nowIso) {
+// `hour` (0-23) and `day` (0-6, Sunday first) are local time, passed in by the
+// caller: this file has no business knowing the time zone.
+function bump(entry, hour, day) {
+  var h = Math.round(Number(hour))
+  var d = Math.round(Number(day))
+  if (h >= 0 && h < 24) entry.hours[h] = normalizeCount(entry.hours[h]) + 1
+  if (d >= 0 && d < 7) entry.days[d] = normalizeCount(entry.days[d]) + 1
+}
+
+function record(usage, appId, nowIso, hour, day) {
   var id = String(appId || "")
   if (id.length === 0) return null
   var next = clone(usage)
-  var entry = next.apps[id] || { count: 0, since: String(nowIso || ""), last: "" }
+  var entry = next.apps[id] ? normalizeEntry(next.apps[id], nowIso) : freshEntry(nowIso)
   entry.count = normalizeCount(entry.count) + 1
   entry.last = String(nowIso || "")
   if (!entry.since) entry.since = String(nowIso || "")
+  bump(entry, hour, day)
+  next.apps[id] = entry
+  return next
+}
+
+// Switching to a window that is already open is not a launch — the count
+// stays honest — but it is still "I wanted this, now", which is exactly what
+// the rhythm is meant to learn.
+function recordIntent(usage, appId, nowIso, hour, day) {
+  var id = String(appId || "")
+  if (id.length === 0 || !usage || !usage.apps || !usage.apps[id]) return null
+  var next = clone(usage)
+  var entry = normalizeEntry(next.apps[id], nowIso)
+  bump(entry, hour, day)
   next.apps[id] = entry
   return next
 }
@@ -141,7 +181,7 @@ function record(usage, appId, nowIso) {
 function reset(usage, nowIso) {
   var next = clone(usage)
   for (var id in next.apps) {
-    next.apps[id] = { count: 0, since: String(nowIso || ""), last: "" }
+    next.apps[id] = freshEntry(nowIso)
   }
   return next
 }
@@ -156,6 +196,11 @@ function entryOf(usage, appId) {
 function countOf(usage, appId) {
   var entry = entryOf(usage, appId)
   return entry ? normalizeCount(entry.count) : 0
+}
+
+function lastOf(usage, appId) {
+  var entry = entryOf(usage, appId)
+  return entry ? String(entry.last || "") : ""
 }
 
 function sinceOf(usage, appId) {
@@ -182,6 +227,60 @@ function ranked(usage, ids, limit) {
     rows.push({ id: id, count: count, order: i })
   }
   rows.sort(function(a, b) { return (b.count - a.count) || (a.order - b.order) })
+  var max = Math.max(1, Math.round(Number(limit) || 5))
+  return rows.slice(0, max)
+}
+
+// ---------------------------------------------------------------- rhythm
+//
+// What you are most likely to want *now*. Each launch lands in an hour-of-day
+// and a day-of-week bucket; the score for the current moment reads the hour
+// histogram through a circular Gaussian (so 08:55 still benefits from a habit
+// at 09:00) and scales it by how much this weekday favours the application.
+// The all-time count is a small tie-breaker — and the whole answer for a file
+// that predates the histograms, so an upgrade does not start from a blank row.
+
+var RHYTHM_SIGMA = 1.25   // hours
+
+function hourAffinity(hours, hour) {
+  var total = 0
+  for (var h = 0; h < 24; h++) {
+    var n = Number(hours[h]) || 0
+    if (n <= 0) continue
+    var d = Math.abs(h - hour)
+    d = Math.min(d, 24 - d)
+    total += n * Math.exp(-(d * d) / (2 * RHYTHM_SIGMA * RHYTHM_SIGMA))
+  }
+  return total
+}
+
+function dayAffinity(days, day) {
+  var sum = 0
+  for (var i = 0; i < 7; i++) sum += Number(days[i]) || 0
+  if (sum < 7) return 1   // not enough to say anything about weekdays yet
+  var share = (Number(days[day]) || 0) * 7 / sum
+  return Math.max(0.5, Math.min(2, share))
+}
+
+function scoreAt(entry, hour, day) {
+  if (!entry) return 0
+  var hours = Array.isArray(entry.hours) ? entry.hours : []
+  var days = Array.isArray(entry.days) ? entry.days : []
+  return hourAffinity(hours, hour) * dayAffinity(days, day) + 0.05 * normalizeCount(entry.count)
+}
+
+// Ids ranked for this moment, highest first, zero scores left out. Ties keep
+// panel order, like `ranked`.
+function predict(usage, ids, hour, day, limit) {
+  var rows = []
+  for (var i = 0; i < (ids || []).length; i++) {
+    var id = String(ids[i] || "")
+    if (id.length === 0) continue
+    var score = scoreAt(entryOf(usage, id), hour, day)
+    if (score <= 0) continue
+    rows.push({ id: id, score: score, order: i })
+  }
+  rows.sort(function(a, b) { return (b.score - a.score) || (a.order - b.order) })
   var max = Math.max(1, Math.round(Number(limit) || 5))
   return rows.slice(0, max)
 }
