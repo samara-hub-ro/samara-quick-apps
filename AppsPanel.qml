@@ -161,7 +161,7 @@ PanelWindow {
   // the shell's own KeyboardPanel does (falling back to barSize when the
   // barSizeFor function is not exposed).
   readonly property real barThickness: !bar ? 0
-    : (typeof bar.barSizeFor === "function" && screen ? bar.barSizeFor(screen.name) : bar.barSize)
+    : (typeof bar.barSizeFor === "function" && screen ? bar.barSizeFor(screen.name) : (bar.barSize || 0))
   readonly property real availableCardWidth: screenW > 0
     ? Math.max(120, screenW - ((barPos === "left" || barPos === "right") ? barThickness + gap + margin : margin * 2))
     : 0

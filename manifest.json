@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "samara-hub-ro.quick-apps",
   "name": "Quick Apps",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "author": "samara-hub-ro",
   "license": "MIT",
   "description": "A quiet launcher in the Omarchy bar: your applications in your own categories, one hover away — drawn in your theme's two colours, with a row that learns what you open at each hour, one-click switching to what is already open, and a details card for every app.",

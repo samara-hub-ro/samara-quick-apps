@@ -9,6 +9,16 @@ for each release.
 
 ## [Unreleased]
 
+## [2.0.1] — 2026-11-23
+
+### Fixed
+
+- **Panel was squashed against the screen edge with the bar at the top.** The
+  bar's layer window spans the whole screen, so its size was used as the bar's
+  thickness and the card collapsed to ~120 px at the bottom. The panel now uses
+  the bar's real strip thickness on all four bar positions. Thanks to @hazaep
+  (#1).
+
 ## [2.0.0] — 2026-10-29
 
 A redesign. The panel now draws in the theme's two colours and nothing else,
@@ -365,7 +375,8 @@ First public release.
   exposes it, for the same icon resolution and launch feedback as the Omarchy
   menu, and falls back to the desktop entry itself otherwise.
 
-[Unreleased]: https://github.com/samara-hub-ro/samara-quick-apps/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/samara-hub-ro/samara-quick-apps/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v2.0.1
 [2.0.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v2.0.0
 [1.5.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.5.0
 [1.4.0]: https://github.com/samara-hub-ro/samara-quick-apps/releases/tag/v1.4.0
